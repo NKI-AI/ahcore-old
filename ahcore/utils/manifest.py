@@ -290,6 +290,7 @@ def image_manifest_to_dataset(
         labels=labels,
         transform=transform,
         backend=image_backend,
+        limit_bounds=True if rois is None else False,
         **kwargs,
     )
 
