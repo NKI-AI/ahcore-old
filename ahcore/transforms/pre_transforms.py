@@ -3,7 +3,9 @@
 dataset."""
 from __future__ import annotations
 
-from typing import Callable
+import csv
+from pathlib import Path
+from typing import Callable, Union
 
 import numpy as np
 import torch
@@ -203,3 +205,40 @@ class ImageToTensor:
 
     def __repr__(self):
         return f"{type(self).__name__}()"
+
+
+class ExtractCenter:
+    """Extracts center metadata for a TCGA WSI, given a metadata csv file
+
+    Args:
+        path: path to csv file containing 2 columns, TSS Code and Source Site (see example below)
+        centers: list of centers to index. If a center is encountered that is not part of
+            the provided list, it automatically gets assigned index len(centers)
+
+    An example content of a metadata csv file would be
+    TSS Code,Source Site
+    01,International Genomics Consortium
+    02,MD Anderson Cancer Center
+    """
+
+    def __init__(self, meta_path: Union[Path, str], centers: list[str]) -> None:
+        # extract slide-to-center mapping from meta file
+        self._center_map = {}
+        self._meta_path = Path(meta_path)
+        with open(self._meta_path, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                self._site_map[row["TSS CODE"]] = row["Source Site"]
+
+        # extract center encodings:
+        self._center_encoding = {center: i for i, center in enumerate(centers)}
+        self._num_encodings = len(self._center_encoding)
+
+    def __call__(self, sample: dict) -> dict:
+        # first get center as string from the slide_id (= last part of wsi filename)
+        slide_id = Path(sample["path"]).stem
+        center = self._center_map[slide_id.split("-")[1]]
+        # add both center and its encoding
+        encoding = self._center_encoding.get(center, self._num_encodings)
+        sample["center"] = (center, encoding)
+        return sample
