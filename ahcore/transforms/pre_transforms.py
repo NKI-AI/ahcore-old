@@ -211,12 +211,10 @@ class ImageToTensor:
 
 class ExtractTCGACenter:
     """Extracts center metadata for a TCGA WSI, given a metadata csv file
-
     Args:
         path: path to csv file containing 2 columns, TSS Code and Source Site (see example below)
         centers: list of centers to index. If a center is encountered that is not part of
             the provided list, it automatically gets assigned index len(centers)
-
     An example content of a metadata csv file would be
     TSS Code,Source Site
     01,International Genomics Consortium
