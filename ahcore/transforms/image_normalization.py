@@ -1,23 +1,26 @@
 # encoding: utf-8
 """
 Image normalization functions
+# TODO: Support `return_stains = True` for MacenkoNormalization()
+# TODO: Use torch.linalg.lstsq to solve the linear system of equations in MacenkoNormalization().
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
+from kornia.constants import DataKey
 
 
-def _transpose_channels(tensor: torch.Tensor) -> torch.Tensor:
+def transpose_channels(tensor: torch.Tensor) -> torch.Tensor:
     tensor = torch.transpose(tensor, 1, 3)
     tensor = torch.transpose(tensor, 2, 3)
     return tensor
 
 
-def _covariance_matrix(tensor: torch.Tensor) -> torch.Tensor:
+def covariance_matrix(tensor: torch.Tensor) -> torch.Tensor:
     """
     https://en.wikipedia.org/wiki/Covariance_matrix
     """
@@ -26,10 +29,9 @@ def _covariance_matrix(tensor: torch.Tensor) -> torch.Tensor:
     return torch.mm(tensor, tensor.T) / (tensor.size(1) - 1)
 
 
-def _percentile(tensor: torch.Tensor, value: float) -> torch.Tensor:
+def percentile(tensor: torch.Tensor, value: float) -> torch.Tensor:
     """
     Original author: https://gist.github.com/spezold/42a451682422beb42bc43ad0c0967a30
-
     Parameters
     ----------
     tensor: torch.Tensor
@@ -119,7 +121,6 @@ class MacenkoNormalizer(nn.Module):
     def find_he_components(self, optical_density_hat: torch.Tensor, eigvecs: torch.Tensor) -> torch.Tensor:
         """
         This function -
-
         1. Computes the H&E staining vectors by projecting the OD values of the image pixels on the plane
         spanned by the eigenvectors corresponding to their two largest eigenvalues.
         2. Normalizes the staining vectors to unit length.
@@ -138,8 +139,8 @@ class MacenkoNormalizer(nn.Module):
         t_hat = torch.matmul(optical_density_hat, eigvecs)
         phi = torch.atan2(t_hat[:, 1], t_hat[:, 0])
 
-        min_phi = _percentile(phi, self._alpha)
-        max_phi = _percentile(phi, 100 - self._alpha)
+        min_phi = percentile(phi, self._alpha)
+        max_phi = percentile(phi, 100 - self._alpha)
 
         v_min = torch.matmul(eigvecs, torch.stack((torch.cos(min_phi), torch.sin(min_phi)))).unsqueeze(1)
         v_max = torch.matmul(eigvecs, torch.stack((torch.cos(max_phi), torch.sin(max_phi)))).unsqueeze(1)
@@ -158,20 +159,22 @@ class MacenkoNormalizer(nn.Module):
         # Convert RGB values in the image to optical density values following the Beer-Lambert's law.
         optical_density, optical_density_hat = self.convert_rgb_to_optical_density(image_tensor)
         # Calculate the eigenvectors of optical density matrix thresholded to remove transparent pixels.
-        _, eigvecs = torch.linalg.eigh(_covariance_matrix(optical_density_hat.T), UPLO="U")
+        _, eigvecs = torch.linalg.eigh(covariance_matrix(optical_density_hat.T), UPLO="U")
         # choose the first two eigenvectors corresponding to the two largest eigenvalues.
         eigvecs = eigvecs[:, [1, 2]]
         # Find the H&E staining vectors and their concentration values for every pixel in the image tensor.
+        # Note - The dependence of staining and their concentrations are linear in OD space
         he = self.find_he_components(optical_density_hat, eigvecs)
         # Calculate the concentrations of the H&E stains in each pixel.
-        # We do this by solving a linear system of equations.
-        # OD = H * C_{h} + E * C_{e} (1)
-        # Note - The dependence of staining and their concentrations are linear in OD space
-        # where OD is the optical density of the pixel,
-        # H and E are the H&E staining vectors, and C_{h} and C_{e} are their respective concentrations.
+        # We do this by solving a linear system of equations. (In this case, the system is overdetermined).
+        # OD =   HE * C -> (1)
+        # where:
+        #   1. OD is the optical density of the pixels in the batch. The dimension is: (n x 3)
+        #   2. HE is the H&E staining vectors (3 x 2). The dimension is: (3 x 2)
+        #   3. C is the concentration of the H&E stains in each pixel. The dimension is: (2 x n)
         # The solution to this system of equation is unique and is computed in the following way:
-        concentration = torch.linalg.lstsq(he, optical_density.T).solution
-        max_concentration = torch.stack([_percentile(concentration[0, :], 99), _percentile(concentration[1, :], 99)])
+        concentration = he.pinverse() @ optical_density.T
+        max_concentration = torch.stack([percentile(concentration[0, :], 99), percentile(concentration[1, :], 99)])
         return he, concentration, max_concentration
 
     def fit(self, image_tensor: torch.Tensor) -> None:
@@ -182,7 +185,7 @@ class MacenkoNormalizer(nn.Module):
     def __normalize_concentrations(
         self, concentrations: torch.Tensor, maximum_concentration: torch.Tensor
     ) -> torch.Tensor:
-        concentrations *= (self._max_con_reference / maximum_concentration).unsqueeze(-1)
+        concentrations *= (self._max_con_reference.to(maximum_concentration) / maximum_concentration).unsqueeze(-1)
         return concentrations
 
     def __create_normalized_images(
@@ -191,11 +194,11 @@ class MacenkoNormalizer(nn.Module):
         batch, classes, height, width = image_tensor.shape
         # recreate the image using reference mixing matrix
         normalised_image_tensor = self._transmitted_intensity * torch.exp(
-            -torch.matmul(self._he_reference, normalized_concentrations)
+            -torch.matmul(self._he_reference.to(normalized_concentrations), normalized_concentrations)
         )
         normalised_image_tensor[normalised_image_tensor > 255] = 255
         normalised_image_tensor = normalised_image_tensor.T.reshape(batch, height, width, classes)
-        normalised_image_tensor = _transpose_channels(normalised_image_tensor)
+        normalised_image_tensor = transpose_channels(normalised_image_tensor)
         return normalised_image_tensor
 
     def __get_h_stain(self, normalized_concentrations: torch.Tensor, image_tensor: torch.Tensor) -> torch.Tensor:
@@ -208,7 +211,7 @@ class MacenkoNormalizer(nn.Module):
         )
         hematoxylin_tensors[hematoxylin_tensors > 255] = 255
         hematoxylin_tensors = hematoxylin_tensors.T.reshape(batch, height, width, classes)
-        hematoxylin_tensors = _transpose_channels(hematoxylin_tensors)
+        hematoxylin_tensors = transpose_channels(hematoxylin_tensors)
         return hematoxylin_tensors
 
     def __get_e_stain(self, normalized_concentrations: torch.Tensor, image_tensor: torch.Tensor) -> torch.Tensor:
@@ -221,28 +224,29 @@ class MacenkoNormalizer(nn.Module):
         )
         eosin_tensors[eosin_tensors > 255] = 255
         eosin_tensors = eosin_tensors.T.reshape(batch, height, width, classes)
-        eosin_tensors = _transpose_channels(eosin_tensors)
+        eosin_tensors = transpose_channels(eosin_tensors)
         return eosin_tensors
 
-    def forward(self, sample) -> dict[str, Any]:
-        image_tensor = sample["image"]
+    def forward(self, *args: tuple[torch.Tensor], data_keys: Optional[list]) -> list[torch.Tensor]:
+        args = list(args)
+        stains = {}
+        image_tensor: torch.Tensor = args[0]
 
         # TODO: Do random sampling from batch before augmentation
         if np.random.rand() > self._probability:
-            return sample
+            args[0] = image_tensor
+            return args
 
         he_matrix, concentrations, maximum_concentration = self.__compute_matrices(image_tensor)
 
         normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
-        sample["image"] = self.__create_normalized_images(normalized_concentrations, image_tensor)
+        normalised_image = self.__create_normalized_images(normalized_concentrations, image_tensor)
+        args[0] = normalised_image
+        if self._return_stains:
+            stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
+            stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
 
-        if not self._return_stains:
-            return sample
-
-        sample["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
-        sample["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
-
-        return sample
+        return args
 
     def __repr__(self):
         return (
