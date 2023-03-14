@@ -23,12 +23,10 @@ logger = get_logger(__name__)
 def dump_staining_parameters(staining_parameters: dict, path_to_folder: Path) -> None:
     """
     This function dumps the staining parameters to a h5 file.
-
     Parameters
     ----------
     staining_parameters: dict
         Staining parameters
-
     path_to_folder: Path
         Path to the folder where the h5 file must be saved.
     """
@@ -55,12 +53,10 @@ def _load_vector_from_h5_file(filename):
 def load_stainings_from_cache(filenames: list[str]) -> dict:
     """
     This function loads the staining vectors for a given WSI from the cache.
-
     Parameters
     ----------
     filenames: list[str]
         List of filenames for which the staining vectors must be loaded.
-
     Returns
     -------
     staining_vectors: dict
@@ -81,20 +77,16 @@ def load_stainings_from_cache(filenames: list[str]) -> dict:
 def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> tuple[torch.Tensor,torch.Tensor]:
     """
     This function post-processes the individual staining channels and returns them.
-
     Parameters
     ----------
     stain_tensor: torch.Tensor
         Tensor containing the H and E vectors
-
     shape: tuple
         Shape of the image
-
     Returns
     -------
     h_stain: torch.Tensor
         Tensor containing the H vector
-
     e_stain: torch.Tensor
         Tensor containing the E vector
     """
@@ -237,14 +229,12 @@ class MacenkoNormalizer(nn.Module):
     def __compute_matrices(self, image_tensor: torch.Tensor, staining_parameters: dict[str: torch.Tensor]) -> torch.Tensor:
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
-
         Parameters
         ----------
         image_tensor : torch.Tensor
             The input image tensor
         staining_parameters : dict[str: torch.Tensor]
             The staining parameters
-
         Returns
         -------
         he_concentrations : torch.Tensor
@@ -275,13 +265,10 @@ class MacenkoNormalizer(nn.Module):
         Normalize the concentrations of the H&E stains in each pixel against the reference concentration.
         Parameters
         ----------
-
         concentrations: torch.Tensor
             The concentration of the H&E stains in each pixel.
-
         maximum_concentration: torch.Tensor
             The maximum concentration of the H&E stains in each pixel.
-
         Returns
         -------
         normalized_concentrations: torch.Tensor
@@ -297,14 +284,12 @@ class MacenkoNormalizer(nn.Module):
     ) -> torch.Tensor:
         """
         Create the normalized images from the normalized concentrations.
-
         Parameters
         ----------
         normalized_concentrations: torch.Tensor
             The normalized concentrations of the H&E stains in the image.
         image_tensor: torch.Tensor
             The image tensor to be normalized.
-
         Returns
         -------
         normalized_images: torch.Tensor
@@ -320,14 +305,12 @@ class MacenkoNormalizer(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Get the H-stain and the E-stain from the normalized concentrations.
-
         Parameters
         ----------
         normalized_concentrations: torch.Tensor
             The normalized concentrations of the H&E stains in the image.
         image_tensor: torch.Tensor
             The image tensor to be normalized.
-
         Returns
         -------
         h_stain: torch.Tensor
@@ -353,15 +336,12 @@ class MacenkoNormalizer(nn.Module):
         spanned by the eigenvectors corresponding to their two largest eigenvalues.
         2. Normalizes the staining vectors to unit length.
         3. Calculates the angle between each of the projected points and the first principal direction.
-
         Parameters:
         ----------
         optical_density_hat: torch.Tensor
             Optical density of the image
-
         eigvecs: torch.Tensor
             Eigenvectors of the covariance matrix
-
         Returns:
         -------
         he_components: torch.Tensor
@@ -385,12 +365,10 @@ class MacenkoNormalizer(nn.Module):
     def convert_rgb_to_optical_density(self, image_tensor: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """
         This function converts an RGB image to optical density values following the Beer-Lambert's law.
-
         Parameters
         ----------
         image_tensor: torch.Tensor
             RGB image tensor, shape (B, 3, H, W)
-
         Returns
         -------
         optical_density: torch.Tensor
@@ -410,12 +388,10 @@ class MacenkoNormalizer(nn.Module):
     def convert_optical_density_to_rgb(self, od_tensor: torch.Tensor) -> torch.Tensor:
         """
         Converts optical density values to RGB
-
         Parameters
         ----------
         od_tensor: torch.Tensor
             Optical density of the image.
-
         Returns
         -------
         rgb_tensor: torch.Tensor
@@ -431,20 +407,16 @@ class MacenkoNormalizer(nn.Module):
     def fit(self, wsi: torch.Tensor, wsi_name: str, dump_to_folder: Optional[Path] = None) -> dict[str: torch.Tensor]:
         """
         Compress a WSI to a single matrix of eigenvectors and return staining parameters.
-
         Parameters:
         ----------
         wsi: torch.tensor
             A tensor containing a whole slide image of shape (1, channels, height, width)
-
         name: Path
             Path to the WSI file
-
         Returns:
         -------
         staining_parameters: dict[str: torch.Tensor, str: torch.Tensor]
             The eigenvectors of the optical density values of the pixels in the image.
-
         Note:
             Dimensions of HE_vector are: (3 x 2)
             Dimensions of max concentration vector are: (2)
@@ -468,7 +440,6 @@ class MacenkoNormalizer(nn.Module):
     def set(self, target_image: torch.Tensor) -> None:
         """
         Set the reference image for the stain normaliser.
-
         Parameters:
         ----------
         target_image: torch.Tensor
