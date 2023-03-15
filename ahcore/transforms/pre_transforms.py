@@ -63,6 +63,8 @@ class PreTransformTaskFactory:
             The `PreTransformTaskFactory` initialized for segmentation tasks.
         """
         transforms: list[Callable] = []
+        if data_description.extract_center:
+            transforms.append(ExtractTCGACenter(meta_path=data_description.center_info_path, centers=data_description.centers))
         if not requires_target:
             return cls(transforms)
 
@@ -207,7 +209,7 @@ class ImageToTensor:
         return f"{type(self).__name__}()"
 
 
-class ExtractCenter:
+class ExtractTCGACenter:
     """Extracts center metadata for a TCGA WSI, given a metadata csv file
 
     Args:
@@ -228,7 +230,7 @@ class ExtractCenter:
         with open(self._meta_path, "r") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                self._site_map[row["TSS CODE"]] = row["Source Site"]
+                self._center_map[row["TSS Code"]] = row["Source Site"]
 
         # extract center encodings:
         self._center_encoding = {center: i for i, center in enumerate(centers)}
