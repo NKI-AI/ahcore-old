@@ -31,7 +31,7 @@ install_requires = [
     "hydra-submitit-launcher>=1.2.0",
     "hydra-optuna-sweeper>=1.2.0",
     "hydra-colorlog>=1.2.0",
-    "dlup>=0.3.20",
+    "dlup>=0.3.24",
     "kornia>=0.6.9",
     "h5py",
     "escnn",  # To use equivariant unets
