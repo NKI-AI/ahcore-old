@@ -17,7 +17,7 @@ from dlup.writers import TiffCompression, TifffileImageWriter
 from torch import Tensor
 
 from ahcore.utils.io import get_logger
-
+from dlup._image import Resampling
 logger = get_logger(__name__)
 
 
@@ -41,11 +41,14 @@ class TiffWriter(Tracker):
         pyramid: bool = False,
         compression: str | None = "jpeg",
         quality: int | None = 100,
+        is_mask: bool = True,
     ):
         self.save_dir = save_dir
         self.pyramid = pyramid
         self.compression = TiffCompression(compression)
         self.quality = quality
+
+        self._interpolator = Resampling.NEAREST if is_mask else None
 
     @staticmethod
     def create_pred_iterator(predictions: list[list[Tensor]]):
@@ -66,6 +69,7 @@ class TiffWriter(Tracker):
             pyramid=self.pyramid,
             compression=self.compression,
             quality=self.quality,
+            interpolator=self._interpolator,
         )
 
         pred_iter = self.create_pred_iterator(predictions)

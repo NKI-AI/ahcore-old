@@ -11,7 +11,7 @@ from functools import partial
 from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any
-
+from dlup._image import Resampling
 import numpy as np
 import pytorch_lightning as pl
 import torch.nn.functional as F
@@ -351,6 +351,7 @@ class AhCoreLightningModule(pl.LightningModule):
                 pyramid=True,
                 compression=TiffCompression("jpeg"),
                 quality=100,
+                interpolator=Resampling.NEAREST,
             )
             self._new_val_wsi = False
             self._predictions_queue.put(
