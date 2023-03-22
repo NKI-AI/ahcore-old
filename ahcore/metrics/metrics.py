@@ -12,7 +12,6 @@ import torch.nn.functional as F  # noqa
 from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 
-
 class AhCoreMetric:
     def __init__(self, data_description: DataDescription) -> None:
         """Initialize the metric class"""

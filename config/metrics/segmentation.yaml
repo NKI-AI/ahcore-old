@@ -3,3 +3,8 @@ tile_level:
 
 wsi_level:
   _target_: ahcore.metrics.WSIMetricFactory.for_segmentation
+
+robustness:
+  _target_: ahcore.metrics.epoch_metrics.PredictionAUCRobustness
+  target_key: "center"
+  target_aggregations: ["min", "max", "mean", "std"]
