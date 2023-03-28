@@ -189,7 +189,27 @@ class MacenkoNormalizer(nn.Module):
             batch_con_vecs.append(concentration)
         return torch.stack(batch_he_vecs, dim=0), torch.stack(batch_con_vecs, dim=0), torch.stack(batch_max_con, dim=0)
 
-    def fit(self, tile_iterator: Iterable, reduce: str = "mean") -> torch.Tensor | list[torch.Tensor]:
+    def fit(self, tile_iterator: Iterable, reduce: str = "resultant") -> torch.Tensor | list[torch.Tensor]:
+        """
+        Compress multiple tiles from a WSI to a single matrix of eigenvectors.
+
+        Parameters:
+        ----------
+        tile_iterator: Iterable
+            An iterator that returns a set of tiles from a single WSI.
+
+        reduce: str
+            The method to reduce the eigenvectors from multiple tiles to a single matrix.
+            Options are:
+            1. "resultant" - The resultant eigenvectors from all the tiles. (default)
+            2. "mean" - The mean of the eigenvectors from all the tiles.
+            3. "raw" - The raw eigenvectors from all the tiles as a list of tensors.
+
+        Returns:
+        -------
+        eigenvectors: torch.Tensor | list[torch.Tensor]
+            The eigenvectors of the covariance matrix of the optical density values of the pixels in the image.
+        """
         if not hasattr(self, '_eigenvectors'):
             setattr(self, "_eigenvectors", [])
         for tile in tile_iterator:
@@ -198,16 +218,26 @@ class MacenkoNormalizer(nn.Module):
             # choose the first two eigenvectors corresponding to the two largest eigenvalues.
             tile_level_eigenvecs = _eigvecs[:, [1, 2]]
             self._eigenvectors.append(tile_level_eigenvecs)
-        if reduce == "resultant":
-            # Return the resultant of the eigenvectors
-            resultant = torch.stack(self._eigenvectors, dim=0).sum(dim=0)
-            # Normalise the resultant
-            resultant = resultant / torch.linalg.norm(resultant, dim=0)
-            return resultant
+        if reduce == "mean":
+            return torch.mean(torch.stack(self._eigenvectors, dim=0), dim=0)
         elif reduce == "raw":
             return torch.stack(self._eigenvectors, dim=0)
+        else:
+            # Return the resultant of the eigenvectors
+            resultant = torch.stack(self._eigenvectors, dim=0).sum(dim=0)
+            # Normalise the resultant using l2 norm
+            resultant = resultant / torch.linalg.norm(resultant, dim=0)
+            return resultant
 
     def set(self, target_image: torch.Tensor) -> None:
+        """
+        Set the reference image for the stain normaliser.
+
+        Parameters:
+        ----------
+        target_image: torch.Tensor
+            The reference image for the stain normaliser.
+        """
         he_matrix, _, maximum_concentration = self.__compute_matrices(image_tensor=target_image)
         self._he_reference = he_matrix
         self._max_con_reference = maximum_concentration
