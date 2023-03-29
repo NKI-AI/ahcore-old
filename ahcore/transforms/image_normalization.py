@@ -11,6 +11,10 @@ from typing import Optional, Iterable
 import torch
 import torch.nn as nn
 
+from ahcore.utils.io import get_logger
+
+logger = get_logger(__name__)
+
 
 def _transpose_channels(tensor: torch.Tensor) -> torch.Tensor:
     tensor = torch.transpose(tensor, 1, 3)
@@ -65,12 +69,12 @@ class MacenkoNormalizer(nn.Module):
     MAX_CON_REFERENCE = torch.Tensor([1.3484, 1.0886])
 
     def __init__(
-        self,
-        alpha: float = 1.0,
-        beta: float = 0.15,
-        transmitted_intensity: int = 240,
-        return_stains: bool = False,
-        probability: float = 1.0,
+            self,
+            alpha: float = 1.0,
+            beta: float = 0.15,
+            transmitted_intensity: int = 240,
+            return_stains: bool = False,
+            probability: float = 1.0,
     ):
         """
         Normalize staining appearence of hematoxylin & eosin stained images. Based on [1].
@@ -106,7 +110,8 @@ class MacenkoNormalizer(nn.Module):
         image_tensor = image_tensor.permute(0, 2, 3, 1)
         # calculate optical density
         optical_density = -torch.log(
-            (image_tensor.reshape((image_tensor.shape[0], -1, image_tensor.shape[-1])).float() + 1) / self._transmitted_intensity
+            (image_tensor.reshape(
+                (image_tensor.shape[0], -1, image_tensor.shape[-1])).float() + 1) / self._transmitted_intensity
         )
         # remove transparent pixels
         optical_density_hat = [sample[~torch.any(sample < self._beta, dim=1)] for sample in optical_density]
@@ -115,7 +120,8 @@ class MacenkoNormalizer(nn.Module):
     def convert_optical_density_to_rgb(self, od_tensor: torch.Tensor) -> torch.Tensor:
         normalised_image_tensor = []
         for norm_conc in od_tensor:
-            normalised_image_tensor.append(self._transmitted_intensity * torch.exp(-self._he_reference.to(norm_conc) @ norm_conc))
+            normalised_image_tensor.append(
+                self._transmitted_intensity * torch.exp(-self._he_reference.to(norm_conc) @ norm_conc))
         normalised_image_tensor = torch.stack(normalised_image_tensor, dim=0)
         normalised_image_tensor[normalised_image_tensor > 255] = 255
         return normalised_image_tensor
@@ -140,7 +146,6 @@ class MacenkoNormalizer(nn.Module):
         """
         t_hat = torch.matmul(optical_density_hat, eigvecs)
         phi = torch.atan2(t_hat[:, 1], t_hat[:, 0])
-
         min_phi = percentile(phi, self._alpha)
         max_phi = percentile(phi, 100 - self._alpha)
 
@@ -154,7 +159,8 @@ class MacenkoNormalizer(nn.Module):
 
         return he_vector
 
-    def __compute_matrices(self, image_tensor: torch.Tensor, eigenvectors: Optional[torch.Tensor | None] = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __compute_matrices(self, image_tensor: torch.Tensor, eigenvectors: Optional[torch.Tensor | None] = None) -> \
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
         """
@@ -165,6 +171,12 @@ class MacenkoNormalizer(nn.Module):
         optical_density, optical_density_hat = self.convert_rgb_to_optical_density(image_tensor)
         # For every sample in the batch, calculate the eigenvectors of optical density matrix thresholded to remove transparent pixels.
         for i in range(len(optical_density_hat)):
+            if optical_density_hat[i].shape[0] <= image_tensor.shape[2]/10:
+                logger.info("No pixels remaining after thresholding. Returning original tile.")
+                batch_he_vecs.append(torch.zeros(3, 2))
+                batch_max_con.append(torch.zeros(2))
+                batch_con_vecs.append(torch.zeros(2, image_tensor.shape[2]*image_tensor.shape[3]))
+                continue
             if eigenvectors is None:
                 _, eigvecs = torch.linalg.eigh(covariance_matrix(optical_density_hat[i].T), UPLO="U")
                 # choose the first two eigenvectors corresponding to the two largest eigenvalues.
@@ -214,6 +226,11 @@ class MacenkoNormalizer(nn.Module):
             setattr(self, "_eigenvectors", [])
         for tile in tile_iterator:
             _, optical_density_hat = self.convert_rgb_to_optical_density(tile.unsqueeze(0))
+            if optical_density_hat[0].shape[0] <= tile.shape[2]/10:
+                logger.info("Skipping tile due to thresholding.")
+                tile_level_eigenvecs = torch.zeros(3, 2)
+                self._eigenvectors.append(tile_level_eigenvecs)
+                continue
             _, _eigvecs = torch.linalg.eigh(covariance_matrix(optical_density_hat[0].T), UPLO="U")
             # choose the first two eigenvectors corresponding to the two largest eigenvalues.
             tile_level_eigenvecs = _eigvecs[:, [1, 2]]
@@ -229,6 +246,15 @@ class MacenkoNormalizer(nn.Module):
             resultant = resultant / torch.linalg.norm(resultant, dim=0)
             return resultant
 
+    def clear(self) -> None:
+        """
+        Clear the eigenvectors from memory.
+        """
+        if hasattr(self, "_eigenvectors"):
+            delattr(self, "_eigenvectors")
+        else:
+            raise AttributeError("No eigenvectors to clear.")
+
     def set(self, target_image: torch.Tensor) -> None:
         """
         Set the reference image for the stain normaliser.
@@ -243,7 +269,7 @@ class MacenkoNormalizer(nn.Module):
         self._max_con_reference = maximum_concentration
 
     def __normalize_concentrations(
-        self, concentrations: torch.Tensor, maximum_concentration: torch.Tensor
+            self, concentrations: torch.Tensor, maximum_concentration: torch.Tensor
     ) -> torch.Tensor:
         output = []
         for conc, max_conc in zip(concentrations, maximum_concentration):
@@ -252,7 +278,7 @@ class MacenkoNormalizer(nn.Module):
         return torch.stack(output, dim=0)
 
     def __create_normalized_images(
-        self, normalized_concentrations: torch.Tensor, image_tensor: torch.Tensor
+            self, normalized_concentrations: torch.Tensor, image_tensor: torch.Tensor
     ) -> torch.Tensor:
         batch, classes, height, width = image_tensor.shape
         # recreate the image using reference mixing matrix
@@ -287,26 +313,25 @@ class MacenkoNormalizer(nn.Module):
     #     eosin_tensors = _transpose_channels(eosin_tensors)
     #     return eosin_tensors
 
-    def forward(self, *args: tuple[torch.Tensor], data_keys: Optional[list], eigenvectors: Optional[torch.Tensor | None] = None) -> list[torch.Tensor]:
-        args = list(args)
-        stains = {}
-        image_tensor: torch.Tensor = args[0]
+    def forward(self, *args: tuple[torch.Tensor], data_keys: Optional[list],
+                eigenvectors: Optional[torch.Tensor | None] = None) -> list[torch.Tensor]:
+        output = []
+        for sample, data_key in zip(args, data_keys):
+            if data_key in ["image"]:
+                image_tensor: torch.Tensor = sample[data_key]
+                he_matrix, concentrations, maximum_concentration = self.__compute_matrices(image_tensor,
+                                                                                           eigenvectors=eigenvectors)
 
-        # # TODO: Do random sampling from batch before augmentation
-        # if np.random.rand() > self._probability:
-        #     args[0] = image_tensor
-        #     return args
+                normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
+                normalised_image = self.__create_normalized_images(normalized_concentrations, image_tensor)
+                output.append(normalised_image)
+            # if self._return_stains:
+            #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
+            #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
+        if len(output) == 1:
+            return output[0]
 
-        he_matrix, concentrations, maximum_concentration = self.__compute_matrices(image_tensor, eigenvectors=eigenvectors)
-
-        normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
-        normalised_image = self.__create_normalized_images(normalized_concentrations, image_tensor)
-        args[0] = normalised_image
-        # if self._return_stains:
-        #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
-        #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
-
-        return args
+        return output
 
     def __repr__(self):
         return (
