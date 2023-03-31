@@ -51,6 +51,7 @@ class DataDescription:
     manifest_path: Path
     dataset_split_path: Optional[Path]
     annotations_dir: Path
+    compute_staining: bool
 
     training_grid: GridDescription
     inference_grid: GridDescription
