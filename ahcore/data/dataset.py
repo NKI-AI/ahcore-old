@@ -129,6 +129,7 @@ class DlupDataModule(pl.LightningDataModule):
         output_tile_size = getattr(grid, "output_tile_size", None)
 
         if self.data_description.compute_staining is True:
+            logger.info("Computing staining vectors for all images...")
             stain_computer = MacenkoNormalizer(return_stains=False)
             wsi_transformation = transforms.Compose([
                 transforms.PILToTensor(),
@@ -137,10 +138,11 @@ class DlupDataModule(pl.LightningDataModule):
             for manifest in manifests:
                 image_fn, _ = parse_wsi_attributes_from_manifest(self.data_description, manifest)
                 slide_image = SlideImage.from_file_path(image_fn)
-                rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(16))
+                rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(8))
+                thumbnail = slide_image.get_thumbnail(size=rescaled_wsi.size).convert("RGB")
                 # We need unsqueeze to mimic a batch dimension.
-                rescaled_wsi_tensor = wsi_transformation(rescaled_wsi).unsqueeze(0)
-                stain_computer.fit(wsi=rescaled_wsi_tensor, wsi_name=image_fn.stem)
+                rescaled_wsi_tensor = wsi_transformation(thumbnail).unsqueeze(0)
+                stain_computer.fit(wsi=rescaled_wsi_tensor, wsi_name=image_fn.stem, dump_to_disk=True)
 
         def dataset_iterator() -> Iterator[Dataset]:
             for image_manifest in manifests:

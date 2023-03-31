@@ -33,9 +33,12 @@ def dump_staining_parameters(staining_parameters: dict) -> None:
         Staining parameters
     """
     file_name = Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters"
-    with h5py.File(file_name / staining_parameters["wsi_name"] / ".h5", "w") as hf:
+    if not file_name.exists():
+        file_name.mkdir(parents=True)
+
+    with h5py.File(file_name / str(staining_parameters["wsi_name"]+".h5"), "w") as hf:
         for key, value in staining_parameters.items():
-            hf.create_dataset(key, data=value, compression="lzf", chunks=True)
+            hf.create_dataset(key, data=value)
 
 
 def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> torch.Tensor:
@@ -332,6 +335,7 @@ class MacenkoNormalizer(nn.Module):
             Dimensions of max cancentration vector are: (2)
             Dimensions of wsi_eigenvectors are: (3 x 2)
         """
+        logger.info("Fitting stain matrix for WSI: %s", wsi_name)
         optical_density, optical_density_hat = self.convert_rgb_to_optical_density(wsi)
         wsi_eigenvectors = _compute_eigenvecs(optical_density_hat[0])
         wsi_level_he = self._find_he_components(optical_density_hat[0], wsi_eigenvectors)
