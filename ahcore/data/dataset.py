@@ -10,14 +10,18 @@ from typing import Any, Callable, Iterator
 
 import pytorch_lightning as pl
 import torch
+from torchvision import transforms
+from dlup import SlideImage
 from dlup.data.dataset import ConcatDataset, Dataset
 from pytorch_lightning.trainer.states import TrainerFn
 from torch.utils.data import DataLoader, Sampler
 
 import ahcore.data.samplers
+from ahcore.transforms.image_normalization import MacenkoNormalizer
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
+from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description, \
+    parse_wsi_attributes_from_manifest
 
 logger = get_logger(__name__)
 
@@ -26,14 +30,14 @@ class DlupDataModule(pl.LightningDataModule):
     """Datamodule for the Ahcore framework. This datamodule is based on `dlup`."""
 
     def __init__(
-        self,
-        data_description: DataDescription,
-        pre_transform: Callable,
-        batch_size: int = 32,  # noqa,pylint: disable=unused-argument
-        validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
-        num_workers: int = 16,
-        persistent_workers: bool = False,
-        pin_memory: bool = False,
+            self,
+            data_description: DataDescription,
+            pre_transform: Callable,
+            batch_size: int = 32,  # noqa,pylint: disable=unused-argument
+            validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
+            num_workers: int = 16,
+            persistent_workers: bool = False,
+            pin_memory: bool = False,
     ) -> None:
         """
         Construct a DataModule based on a manifest.
@@ -124,6 +128,20 @@ class DlupDataModule(pl.LightningDataModule):
         tile_overlap = grid.tile_overlap
         output_tile_size = getattr(grid, "output_tile_size", None)
 
+        if self.data_description.compute_staining is True:
+            stain_computer = MacenkoNormalizer(return_stains=False)
+            wsi_transformation = transforms.Compose([
+                transforms.PILToTensor(),
+                transforms.Lambda(lambda x: x * 255)
+            ])
+            for manifest in manifests:
+                image_fn, _ = parse_wsi_attributes_from_manifest(self.data_description, manifest)
+                slide_image = SlideImage.from_file_path(image_fn)
+                rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(16))
+                # We need unsqueeze to mimic a batch dimension.
+                rescaled_wsi_tensor = wsi_transformation(rescaled_wsi).unsqueeze(0)
+                stain_computer.fit(wsi=rescaled_wsi_tensor, wsi_name=image_fn.stem)
+
         def dataset_iterator() -> Iterator[Dataset]:
             for image_manifest in manifests:
                 dataset = image_manifest_to_dataset(
@@ -197,7 +215,7 @@ class DlupDataModule(pl.LightningDataModule):
         return obj
 
     def _construct_dataloader_iterator(
-        self, data_iterator, batch_size: int
+            self, data_iterator, batch_size: int
     ) -> Iterator[tuple[dict[str, Any], DataLoader]] | None:
         if not data_iterator:
             return None
@@ -205,8 +223,8 @@ class DlupDataModule(pl.LightningDataModule):
         test_description = self.data_description.inference_grid
         # TODO: This should be somewhere where we validate the configuration
         if (
-            test_description.output_tile_size is not None
-            and test_description.output_tile_size != test_description.tile_size
+                test_description.output_tile_size is not None
+                and test_description.output_tile_size != test_description.tile_size
         ):
             raise ValueError(f"`output_tile_size should be equal to tile_size in inference or set to None.")
 
