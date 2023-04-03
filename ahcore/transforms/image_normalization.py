@@ -272,47 +272,26 @@ class MacenkoNormalizer(nn.Module):
 
         return he_vector
 
-    def __compute_matrices(
-            self, image_tensor: torch.Tensor, staining_parameters: Optional[dict[str: torch.Tensor] | None] = None
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __compute_matrices(self, image_tensor: torch.Tensor, staining_parameters: dict[str: torch.Tensor]) -> torch.Tensor:
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
         """
-        batch_he_vecs = []
-        batch_max_con = []
         batch_con_vecs = []
-        wsi_eigenvectors = staining_parameters["wsi_eigenvectors"] if staining_parameters is not None else None
-        wsi_staining_vectors = staining_parameters["wsi_staining_vectors"] if staining_parameters is not None else None
         # Convert RGB values in the image to optical density values following the Beer-Lambert's law.
         # Note - The dependence of staining and their concentrations are linear in OD space.
         optical_density, optical_density_hat = self.convert_rgb_to_optical_density(image_tensor)
-        # For tile in the optical density (OD) vector:
-        #  Step 1. calculate the eigenvectors of thresholded OD vector (optical_density_hat).
-        #  Step 2. find the H&E staining vectors by projecting the OD vector on the plane spanned by the eigenvectors.
-        #  Step 3. calculate the concentration of the H&E staining vectors for each pixel in the OD vector.
-        #  Step 4. Also return the maximum concentration of the H&E staining within the tile.
         for i in range(len(optical_density_hat)):
-            # Performing Step 1:
-            eigvecs = _compute_eigenvecs(optical_density_hat[i]) if wsi_eigenvectors is None else wsi_eigenvectors[i]
-            # Performing Step 2:
-            he = (
-                self._find_he_components(optical_density_hat[i], eigvecs)
-                if wsi_staining_vectors is None
-                else wsi_staining_vectors[i]
-            )
-            # Performing Step 3, 4:
-            #   Calculate the concentrations of the H&E stains in each pixel.
-            #   We do this by solving a linear system of equations. (In this case, the system is overdetermined).
-            #   OD =   HE * C -> (1)
-            #   where:
-            #       1. OD is the optical density of the pixels in the batch. The dimension is: (n x 3)
-            #       2. HE is the H&E staining vectors (3 x 2). The dimension is: (3 x 2)
-            #       3. C is the concentration of the H&E stains in each pixel. The dimension is: (2 x n)
-            he_concentrations, max_concentrations = _compute_concentrations(he, optical_density[i])
-            batch_he_vecs.append(he)
-            batch_max_con.append(max_concentrations)
+            he = staining_parameters["wsi_staining_vectors"]
+            # Calculate the concentrations of the H&E stains in each pixel.
+            # We do this by solving a linear system of equations. (In this case, the system is overdetermined).
+            # OD =   HE * C -> (1)
+            # where:
+            #     1. OD is the optical density of the pixels in the batch. The dimension is: (n x 3)
+            #     2. HE is the H&E staining vectors (3 x 2). The dimension is: (3 x 2)
+            #     3. C is the concentration of the H&E stains in each pixel. The dimension is: (2 x n)
+            he_concentrations, _ = _compute_concentrations(he, optical_density[i])
             batch_con_vecs.append(he_concentrations)
-        return torch.stack(batch_he_vecs, dim=0), torch.stack(batch_con_vecs, dim=0), torch.stack(batch_max_con, dim=0)
+        return torch.stack(batch_con_vecs, dim=0)
 
     def fit(self, wsi: torch.Tensor, wsi_name: str, dump_to_folder: Optional[Path] = None) -> dict[str: torch.Tensor]:
         """
@@ -357,9 +336,9 @@ class MacenkoNormalizer(nn.Module):
         target_image: torch.Tensor
             The reference image for the stain normaliser.
         """
-        he_matrix, _, maximum_concentration = self.__compute_matrices(image_tensor=target_image)
-        self._he_reference = he_matrix
-        self._max_con_reference = maximum_concentration
+        staining_parameters = self.fit(wsi=target_image, wsi_name="target image")
+        self._he_reference = staining_parameters["wsi_staining_vectors"]
+        self._max_con_reference = staining_parameters["max_wsi_concentration"]
 
     def __normalize_concentrations(
             self, concentrations: torch.Tensor, maximum_concentration: torch.Tensor
@@ -450,27 +429,22 @@ class MacenkoNormalizer(nn.Module):
             **kwargs) -> list[torch.Tensor]:
         output = []
         data_keys = kwargs["data_keys"]
-        if kwargs["staining_parameters"]:
+        if "staining_parameters" in kwargs.keys():
             staining_parameters = kwargs["staining_parameters"]
         else:
             staining_parameters = None
         for sample, data_key in zip(args, data_keys):
             if data_key in [DataKey.INPUT, 0, "INPUT"]:
-                _, concentrations, maximum_concentration = self.__compute_matrices(
-                    sample, staining_parameters=staining_parameters
-                )
-                if staining_parameters is not None:
-                    maximum_concentration = staining_parameters["max_wsi_concentration"]
-
+                concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
+                maximum_concentration = staining_parameters["max_wsi_concentration"]
                 normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
                 normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
                 output.append(normalised_image)
             # if self._return_stains:
             #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
             #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
-        if len(output) == 1:
-            return output[0]
-
+            if len(output) == 1:
+                return output[0]
         return output
 
     def __repr__(self):
