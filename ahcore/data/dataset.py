@@ -110,7 +110,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._num_classes = data_description.num_classes
 
-    def setup(self, stage: str | None = None) -> None:
+    def setup(self, stage: TrainerFn | None = None) -> None:
         if not stage:
             return
 
@@ -129,20 +129,24 @@ class DlupDataModule(pl.LightningDataModule):
         output_tile_size = getattr(grid, "output_tile_size", None)
 
         if self.data_description.compute_staining is True:
-            logger.info("Computing staining vectors for all images...")
-            stain_computer = MacenkoNormalizer(return_stains=False)
-            wsi_transformation = transforms.Compose([
-                transforms.PILToTensor(),
-                transforms.Lambda(lambda x: x * 255)
-            ])
-            for manifest in manifests:
-                image_fn, _ = parse_wsi_attributes_from_manifest(self.data_description, manifest)
-                slide_image = SlideImage.from_file_path(image_fn)
-                rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(8))
-                thumbnail = slide_image.get_thumbnail(size=rescaled_wsi.size).convert("RGB")
-                # We need unsqueeze to mimic a batch dimension.
-                rescaled_wsi_tensor = wsi_transformation(thumbnail).unsqueeze(0)
-                stain_computer.fit(wsi=rescaled_wsi_tensor, wsi_name=image_fn.stem, dump_to_disk=True)
+            path_to_dump_stains = Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / stage.value / "staining_parameters"
+            if path_to_dump_stains.is_dir():
+                logger.info(f"Staining vectors for all images in {stage} stage are already cached...")
+            else:
+                logger.info(f"Computing staining vectors for all images in {stage} stage...")
+                stain_computer = MacenkoNormalizer(return_stains=False)
+                wsi_transformation = transforms.Compose([
+                    transforms.PILToTensor(),
+                    transforms.Lambda(lambda x: x * 255)
+                ])
+                for manifest in manifests:
+                    image_fn, _, overwrite_mpp = parse_wsi_attributes_from_manifest(self.data_description, manifest)
+                    slide_image = SlideImage.from_file_path(image_fn, overwrite_mpp=overwrite_mpp)
+                    rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(16))
+                    thumbnail = slide_image.get_thumbnail(size=rescaled_wsi.size).convert("RGB")
+                    # We need unsqueeze to mimic a batch dimension.
+                    rescaled_wsi_tensor = wsi_transformation(thumbnail).unsqueeze(0)
+                    stain_computer.fit(wsi=rescaled_wsi_tensor, wsi_name=image_fn.stem, dump_to_folder=path_to_dump_stains)
 
         def dataset_iterator() -> Iterator[Dataset]:
             for image_manifest in manifests:

@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 import h5py
-import os
+from kornia.constants import DataKey
 
 from ahcore.utils.io import get_logger
 
@@ -24,7 +24,7 @@ def _transpose_channels(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def dump_staining_parameters(staining_parameters: dict) -> None:
+def dump_staining_parameters(staining_parameters: dict, path_to_folder: Path) -> None:
     """
     This function dumps the staining parameters to a h5 file.
     Parameters
@@ -32,11 +32,10 @@ def dump_staining_parameters(staining_parameters: dict) -> None:
     staining_parameters: dict
         Staining parameters
     """
-    file_name = Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters"
-    if not file_name.exists():
-        file_name.mkdir(parents=True)
+    if not path_to_folder.exists():
+        path_to_folder.mkdir(parents=True)
 
-    with h5py.File(file_name / str(staining_parameters["wsi_name"]+".h5"), "w") as hf:
+    with h5py.File(path_to_folder / str(staining_parameters["wsi_name"]+".h5"), "w") as hf:
         for key, value in staining_parameters.items():
             hf.create_dataset(key, data=value)
 
@@ -315,7 +314,7 @@ class MacenkoNormalizer(nn.Module):
             batch_con_vecs.append(he_concentrations)
         return torch.stack(batch_he_vecs, dim=0), torch.stack(batch_con_vecs, dim=0), torch.stack(batch_max_con, dim=0)
 
-    def fit(self, wsi: torch.Tensor, wsi_name: str, dump_to_disk: bool = False) -> dict[str: torch.Tensor]:
+    def fit(self, wsi: torch.Tensor, wsi_name: str, dump_to_folder: Optional[Path] = None) -> dict[str: torch.Tensor]:
         """
         Compress a WSI to a single matrix of eigenvectors and return staining parameters.
 
@@ -346,8 +345,8 @@ class MacenkoNormalizer(nn.Module):
             "wsi_eigenvectors": wsi_eigenvectors,
             "max_wsi_concentration": wsi_level_max_concentrations,
         }
-        if dump_to_disk:
-            dump_staining_parameters(staining_parameters)
+        if dump_to_folder:
+            dump_staining_parameters(staining_parameters, dump_to_folder)
         return staining_parameters
 
     def set(self, target_image: torch.Tensor) -> None:
@@ -448,21 +447,23 @@ class MacenkoNormalizer(nn.Module):
     def forward(
             self,
             *args: tuple[torch.Tensor],
-            data_keys: Optional[list],
-            staining_parameters: Optional[dict[str: torch.Tensor, str: torch.Tensor] | None] = None,
-    ) -> list[torch.Tensor]:
+            **kwargs) -> list[torch.Tensor]:
         output = []
+        data_keys = kwargs["data_keys"]
+        if kwargs["staining_parameters"]:
+            staining_parameters = kwargs["staining_parameters"]
+        else:
+            staining_parameters = None
         for sample, data_key in zip(args, data_keys):
-            if data_key in ["image"]:
-                image_tensor: torch.Tensor = sample[data_key]
+            if data_key in [DataKey.INPUT, 0, "INPUT"]:
                 _, concentrations, maximum_concentration = self.__compute_matrices(
-                    image_tensor, staining_parameters=staining_parameters
+                    sample, staining_parameters=staining_parameters
                 )
                 if staining_parameters is not None:
                     maximum_concentration = staining_parameters["max_wsi_concentration"]
 
                 normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
-                normalised_image = self.__create_normalized_images(normalized_concentrations, image_tensor)
+                normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
                 output.append(normalised_image)
             # if self._return_stains:
             #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
