@@ -140,9 +140,7 @@ class DlupDataModule(pl.LightningDataModule):
             else:
                 logger.info(f"Computing staining vectors for all images in {stage} stage...")
                 stain_computer = MacenkoNormalizer(return_stains=False)
-                wsi_transformation = transforms.Compose(
-                    [transforms.PILToTensor()]
-                )
+                wsi_transformation = transforms.Compose([transforms.PILToTensor()])
                 for manifest in manifests:
                     image_fn, _, overwrite_mpp = parse_wsi_attributes_from_manifest(self.data_description, manifest)
                     slide_image = SlideImage.from_file_path(image_fn, overwrite_mpp=overwrite_mpp)

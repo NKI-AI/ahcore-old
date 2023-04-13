@@ -44,7 +44,7 @@ def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> torch.Tensor:
     """
     batch, channels, height, width = shape
     stain_tensor[stain_tensor > 255] = 255
-    stain_tensor = stain_tensor.reshape(batch, channels, height, width)
+    stain_tensor = stain_tensor.view(batch, channels, height, width)
     return stain_tensor
 
 
@@ -128,12 +128,12 @@ class MacenkoNormalizer(nn.Module):
     A torch implementation of the Macenko Normalization technique to learn optimal staining matrix during training.
     This implementation is derived from https://github.com/EIDOSLAB/torchstain
     The reference values from the orginal implementation are:
-    >>> HE_REFERENCE = torch.tensor([[0.5626, 0.2159], [0.7201, 0.8012], [0.4062, 0.5581]])
-    >>> MAX_CON_REFERENCE = torch.tensor([1.9705, 1.0308])
+    >>> HE_REFERENCE = torch.tensor([[[0.5626, 0.2159], [0.7201, 0.8012], [0.4062, 0.5581]]])
+    >>> MAX_CON_REFERENCE = torch.tensor([[1.9705, 1.0308]])
     """
 
-    HE_REFERENCE = torch.Tensor([[0.5042, 0.1788], [0.7723, 0.8635], [0.3865, 0.4716]])
-    MAX_CON_REFERENCE = torch.Tensor([1.3484, 1.0886])
+    HE_REFERENCE = torch.Tensor([[[0.5042, 0.1788], [0.7723, 0.8635], [0.3865, 0.4716]]])
+    MAX_CON_REFERENCE = torch.Tensor([[1.3484, 1.0886]])
 
     def __init__(
             self,
@@ -187,10 +187,10 @@ class MacenkoNormalizer(nn.Module):
         optical_density_hat: list[torch.Tensor]
             Optical density of the image tensor, shape (B, num_foreground_pixels, 3)
         """
-        image_tensor = image_tensor.permute(0, 2, 3, 1)
+        image_tensor = image_tensor.permute(0, 2, 3, 1).contiguous()
         num_tiles, height, width, channels = image_tensor.shape
         # calculate optical density
-        optical_density = -torch.log((image_tensor.float() + 1) / self._transmitted_intensity)
+        optical_density = -torch.log((image_tensor.to(torch.float64) + 1) / self._transmitted_intensity)
         # remove transparent pixels
         mask = optical_density.min(dim=-1).values > self._beta
         optical_density_hat = [optical_density[i][mask[i]] for i in range(num_tiles)]
@@ -208,16 +208,10 @@ class MacenkoNormalizer(nn.Module):
         rgb_tensor: torch.Tensor
             RGB image.
         """
-        normalised_image_tensor = []
-        if len(od_tensor.shape) == 2:
-            normalised_image_tensor = self._transmitted_intensity * torch.exp(-self._he_reference.to(od_tensor) @ od_tensor)
-        else:
-            for norm_conc in od_tensor:
-                normalised_image_tensor.append(
-                    self._transmitted_intensity * torch.exp(-self._he_reference.to(norm_conc) @ norm_conc)
-                )
-            normalised_image_tensor = torch.stack(normalised_image_tensor, dim=0)
-            normalised_image_tensor[normalised_image_tensor > 255] = 255
+        projection_to_reference_stains = -self._he_reference.to(od_tensor) @ od_tensor
+        optical_density_to_rgb = torch.exp(projection_to_reference_stains)
+        normalised_image_tensor = optical_density_to_rgb * self._transmitted_intensity
+        normalised_image_tensor[normalised_image_tensor > 255.] = 255.
         return normalised_image_tensor
 
     def _find_he_components(self, optical_density_hat: torch.Tensor, eigvecs: torch.Tensor) -> torch.Tensor:
@@ -255,7 +249,7 @@ class MacenkoNormalizer(nn.Module):
 
     def __compute_matrices(
             self, image_tensor: torch.Tensor, staining_parameters: dict[str: torch.Tensor]
-    ) -> torch.Tensor:
+    ) -> tuple(torch.Tensor, torch.Tensor):
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
         """
@@ -263,9 +257,9 @@ class MacenkoNormalizer(nn.Module):
         # Convert RGB values in the image to optical density values following the Beer-Lambert's law.
         # Note - The dependence of staining and their concentrations are linear in OD space.
         optical_density, _ = self.convert_rgb_to_optical_density(image_tensor)
-        for i in range(len(optical_density)):
-            od_tensor = optical_density[i].reshape(-1, 3)
-            he = staining_parameters["wsi_staining_vectors"][i]
+        for sample_idx in range(len(optical_density)):
+            od_tensor = optical_density[sample_idx].view(-1, 3)
+            he = staining_parameters["wsi_staining_vectors"][sample_idx]
             # Calculate the concentrations of the H&E stains in each pixel.
             # We do this by solving a linear system of equations. (In this case, the system is overdetermined).
             # OD =   HE * C -> (1)
@@ -273,7 +267,7 @@ class MacenkoNormalizer(nn.Module):
             #     1. OD is the optical density of the pixels in the batch. The dimension is: (n x 3)
             #     2. HE is the H&E staining vectors (3 x 2). The dimension is: (3 x 2)
             #     3. C is the concentration of the H&E stains in each pixel. The dimension is: (2 x n)
-            he_concentrations, _ = _compute_concentrations(he, od_tensor)
+            he_concentrations, max_concentrations = _compute_concentrations(he, od_tensor)
             batch_con_vecs.append(he_concentrations)
         return torch.stack(batch_con_vecs, dim=0)
 
@@ -297,14 +291,14 @@ class MacenkoNormalizer(nn.Module):
         """
         logger.info("Fitting stain matrix for WSI: %s", wsi_name)
         optical_density, optical_density_hat = self.convert_rgb_to_optical_density(wsi)
-        optical_density = optical_density.squeeze(0).reshape(-1, 3)
+        optical_density = optical_density.squeeze(0).view(-1, 3)
         wsi_eigenvectors = _compute_eigenvecs(optical_density_hat[0])
         wsi_level_he = self._find_he_components(optical_density_hat[0], wsi_eigenvectors)
-        _, wsi_level_max_concentrations = _compute_concentrations(wsi_level_he, optical_density)
+        wsi_level_concentrations, wsi_level_max_concentrations = _compute_concentrations(wsi_level_he, optical_density)
         staining_parameters = {
             "wsi_name": wsi_name,
             "wsi_staining_vectors": wsi_level_he.unsqueeze(0),
-            "max_wsi_concentration": wsi_level_max_concentrations.unsqueeze(0),
+            "max_wsi_concentration": wsi_level_max_concentrations.unsqueeze(0).unsqueeze(0),
         }
         if dump_to_folder:
             dump_staining_parameters(staining_parameters, dump_to_folder)
@@ -323,7 +317,7 @@ class MacenkoNormalizer(nn.Module):
         self._max_con_reference = staining_parameters["max_wsi_concentration"]
 
     def __normalize_concentrations(
-            self, concentrations: torch.Tensor, maximum_concentration: torch.Tensor
+            self, concentrations: torch.Tensor, maximum_concentration: torch.tensor
     ) -> torch.Tensor:
         """
         Normalize the concentrations of the H&E stains in each pixel against the reference concentration.
@@ -338,14 +332,8 @@ class MacenkoNormalizer(nn.Module):
         normalized_concentrations: torch.Tensor
             The normalized concentration of the H&E stains in each pixel.
         """
-        output = []
-        if len(concentrations.shape) == 2:
-            normalised_concentration = concentrations * (self._max_con_reference.to(maximum_concentration) / maximum_concentration).unsqueeze(-1)
-        else:
-            for conc, max_conc in zip(concentrations, maximum_concentration):
-                norm_conc = conc * (self._max_con_reference.to(max_conc) / max_conc).unsqueeze(-1)
-                output.append(norm_conc)
-            normalised_concentration = torch.stack(output, dim=0)
+        scaled_reference = torch.div(self._max_con_reference.to(maximum_concentration), maximum_concentration)
+        normalised_concentration = torch.mul(concentrations, scaled_reference.permute(0, 2, 1).contiguous())
         return normalised_concentration
 
     def __create_normalized_images(
@@ -367,7 +355,7 @@ class MacenkoNormalizer(nn.Module):
         batch, classes, height, width = image_tensor.shape
         # recreate the image using reference mixing matrix
         normalised_image_tensor = self.convert_optical_density_to_rgb(od_tensor=normalized_concentrations)
-        normalised_image_tensor = normalised_image_tensor.reshape(batch, classes, height, width)
+        normalised_image_tensor = normalised_image_tensor.view(batch, classes, height, width)
         return normalised_image_tensor
 
     def __get_stains(
@@ -407,15 +395,14 @@ class MacenkoNormalizer(nn.Module):
     def forward(self, *args: tuple[torch.Tensor], **kwargs) -> list[torch.Tensor]:
         output = []
         data_keys = kwargs["data_keys"]
-        if "staining_parameters" in kwargs.keys():
-            staining_parameters = kwargs["staining_parameters"]
-        else:
-            staining_parameters = None
+        if "staining_parameters" not in kwargs.keys():
+            raise ValueError("Staining parameters must be provided.")
+        staining_parameters = kwargs["staining_parameters"]
         for sample, data_key in zip(args, data_keys):
             if data_key in [DataKey.INPUT, 0, "INPUT"]:
-                concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
-                maximum_concentration = staining_parameters["max_wsi_concentration"]
-                normalized_concentrations = self.__normalize_concentrations(concentrations, maximum_concentration)
+                concentrations, od_vectors = self.__compute_matrices(sample, staining_parameters=staining_parameters)
+                wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
+                normalized_concentrations = self.__normalize_concentrations(concentrations, wsi_maximum_concentration)
                 normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
                 output.append(normalised_image)
             # if self._return_stains:
