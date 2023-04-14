@@ -133,16 +133,16 @@ class DlupDataModule(pl.LightningDataModule):
 
         if self.data_description.compute_staining is True:
             path_to_dump_stains = (
-                Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / stage.value / "staining_parameters"
+                Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters"
             )
-            if path_to_dump_stains.is_dir():
-                logger.info(f"Staining vectors for all images in {stage} stage are already cached...")
-            else:
-                logger.info(f"Computing staining vectors for all images in {stage} stage...")
-                stain_computer = MacenkoNormalizer(return_stains=False)
-                wsi_transformation = transforms.Compose([transforms.PILToTensor()])
-                for manifest in manifests:
-                    image_fn, _, overwrite_mpp = parse_wsi_attributes_from_manifest(self.data_description, manifest)
+            stain_computer = MacenkoNormalizer(return_stains=False)
+            wsi_transformation = transforms.Compose([transforms.PILToTensor()])
+            for manifest in manifests:
+                image_fn, _, overwrite_mpp = parse_wsi_attributes_from_manifest(self.data_description, manifest)
+                if (path_to_dump_stains / (image_fn.stem + ".h5")).is_file():
+                    logger.info(f"Staining vectors stage {image_fn.stem} are already cached...")
+                    continue
+                else:
                     slide_image = SlideImage.from_file_path(image_fn, overwrite_mpp=overwrite_mpp)
                     rescaled_wsi = slide_image.get_scaled_view(slide_image.get_scaling(16))
                     thumbnail = slide_image.get_thumbnail(size=rescaled_wsi.size).convert("RGB")

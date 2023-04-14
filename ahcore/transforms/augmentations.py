@@ -200,9 +200,8 @@ class AugmentationFactory(nn.Module):
 
     def forward(self, sample):
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
-
         if self._initial_transforms:
-            kwargs = {"data_keys": self._data_keys}
+            kwargs = {"data_keys": self._data_keys, "filenames": sample["path"]}
             for transform in self._initial_transforms:
                 output_data = transform(*output_data, **kwargs)
 

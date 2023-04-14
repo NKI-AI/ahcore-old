@@ -8,10 +8,12 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
+import os
 import torch.nn as nn
+from functools import lru_cache
 from pathlib import Path
+import numpy as np
 import h5py
-from kornia.constants import DataKey
 
 from ahcore.utils.io import get_logger
 
@@ -32,6 +34,31 @@ def dump_staining_parameters(staining_parameters: dict, path_to_folder: Path) ->
     with h5py.File(path_to_folder / str(staining_parameters["wsi_name"] + ".h5"), "w") as hf:
         for key, value in staining_parameters.items():
             hf.create_dataset(key, data=value)
+
+
+@lru_cache(maxsize=None)
+def load_vector_from_h5_file(filenames):
+    path_to_stains = (
+                Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters" / (filenames + ".h5"))
+    if not path_to_stains.exists():
+        raise FileNotFoundError(f"Staining parameters not found for {filenames}")
+    staining_vectors = h5py.File(path_to_stains, 'r')
+    he_staining_vectors = torch.tensor(np.array(staining_vectors["wsi_staining_vectors"]))
+    max_concentrations = torch.tensor(np.array(staining_vectors["max_wsi_concentration"]))
+    return he_staining_vectors, max_concentrations
+
+def load_stainings_from_cache(filenames: list[str]) -> dict:
+    staining_parameters = {}
+    hes = []
+    max_concentrations = []
+    for filename in filenames:
+        he, max_con = load_vector_from_h5_file(Path(filename).stem)
+        hes.append(he)
+        max_concentrations.append(max_con)
+    breakpoint()
+    staining_parameters["wsi_staining_vectors"] = torch.stack(hes)
+    staining_parameters["max_wsi_concentration"] = torch.stack(max_concentrations)
+    return staining_parameters
 
 
 def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> torch.Tensor:
@@ -66,7 +93,7 @@ def _compute_concentrations(
     max_concentrations: torch.Tensor
         Maximum concentrations of the individual stains
     """
-    he_concentrations = he_vector.pinverse() @ optical_density.T
+    he_concentrations = he_vector.to(optical_density).pinverse() @ optical_density.T
     max_concentration = torch.stack([percentile(he_concentrations[0, :], 99), percentile(he_concentrations[1, :], 99)])
     return he_concentrations, max_concentration
 
@@ -185,6 +212,7 @@ class MacenkoNormalizer(nn.Module):
         optical_density, _ = self.convert_rgb_to_optical_density(image_tensor)
         for sample_idx in range(len(optical_density)):
             od_tensor = optical_density[sample_idx].view(-1, 3)
+            breakpoint()
             he = staining_parameters["wsi_staining_vectors"][sample_idx]
             # Calculate the concentrations of the H&E stains in each pixel.
             # We do this by solving a linear system of equations. (In this case, the system is overdetermined).
@@ -323,7 +351,7 @@ class MacenkoNormalizer(nn.Module):
         image_tensor = image_tensor.permute(0, 2, 3, 1).contiguous()
         num_tiles, height, width, channels = image_tensor.shape
         # calculate optical density
-        optical_density = -torch.log((image_tensor.to(torch.float64) + 1) / self._transmitted_intensity)
+        optical_density = -torch.log((image_tensor.float() + 1) / self._transmitted_intensity)
         # remove transparent pixels
         mask = optical_density.min(dim=-1).values > self._beta
         optical_density_hat = [optical_density[i][mask[i]] for i in range(num_tiles)]
@@ -373,8 +401,8 @@ class MacenkoNormalizer(nn.Module):
         wsi_level_concentrations, wsi_level_max_concentrations = _compute_concentrations(wsi_level_he, optical_density)
         staining_parameters = {
             "wsi_name": wsi_name,
-            "wsi_staining_vectors": wsi_level_he.unsqueeze(0),
-            "max_wsi_concentration": wsi_level_max_concentrations.unsqueeze(0).unsqueeze(0),
+            "wsi_staining_vectors": wsi_level_he,
+            "max_wsi_concentration": wsi_level_max_concentrations,
         }
         if dump_to_folder:
             dump_staining_parameters(staining_parameters, dump_to_folder)
@@ -394,23 +422,18 @@ class MacenkoNormalizer(nn.Module):
 
     def forward(self, *args: tuple[torch.Tensor], **kwargs) -> list[torch.Tensor]:
         output = []
-        data_keys = kwargs["data_keys"]
-        if "staining_parameters" not in kwargs.keys():
-            raise ValueError("Staining parameters must be provided.")
-        staining_parameters = kwargs["staining_parameters"]
-        for sample, data_key in zip(args, data_keys):
-            if data_key in [DataKey.INPUT, 0, "INPUT"]:
-                concentrations, od_vectors = self.__compute_matrices(sample, staining_parameters=staining_parameters)
-                wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
-                normalized_concentrations = self.__normalize_concentrations(concentrations, wsi_maximum_concentration)
-                normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
-                output.append(normalised_image)
-            # if self._return_stains:
-            #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
-            #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
-            if len(output) == 1:
-                return output[0]
-        return output
+        sample = args[0]
+        filenames = kwargs["filenames"]
+        staining_parameters = load_stainings_from_cache(filenames)
+        concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
+        wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
+        normalized_concentrations = self.__normalize_concentrations(concentrations, wsi_maximum_concentration)
+        normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
+        output.append(normalised_image)
+        # if self._return_stains:
+        #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
+        #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
+        return output[0]
 
     def __repr__(self):
         return (
