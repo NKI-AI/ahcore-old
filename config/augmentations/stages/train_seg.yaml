@@ -1,4 +1,4 @@
-_target_: ahcore.augmentations.AugmentationFactory
+_target_: ahcore.transforms.augmentations.AugmentationFactory
 
 # These transforms will be applied in order as a first step.
 initial_transforms:
