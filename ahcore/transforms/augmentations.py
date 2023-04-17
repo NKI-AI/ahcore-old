@@ -98,7 +98,7 @@ class CenterCrop(nn.Module):
             _size = tuple(size)
 
         self._cropper = K.CenterCrop(
-            size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice", return_transform=None
+            size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice"
         )
 
     def forward(self, *sample: torch.Tensor, data_keys: list[str | int | DataKey] = None, **kwargs):

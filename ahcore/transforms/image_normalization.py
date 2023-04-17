@@ -55,7 +55,6 @@ def load_stainings_from_cache(filenames: list[str]) -> dict:
         he, max_con = load_vector_from_h5_file(Path(filename).stem)
         hes.append(he)
         max_concentrations.append(max_con)
-    breakpoint()
     staining_parameters["wsi_staining_vectors"] = torch.stack(hes)
     staining_parameters["max_wsi_concentration"] = torch.stack(max_concentrations)
     return staining_parameters
@@ -423,8 +422,11 @@ class MacenkoNormalizer(nn.Module):
     def forward(self, *args: tuple[torch.Tensor], **kwargs) -> list[torch.Tensor]:
         output = []
         sample = args[0]
-        filenames = kwargs["filenames"]
-        staining_parameters = load_stainings_from_cache(filenames)
+        if kwargs["staining_parameters"]:
+            staining_parameters = kwargs["staining_parameters"]
+        else:
+            filenames = kwargs["filenames"]
+            staining_parameters = load_stainings_from_cache(filenames)
         concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
         wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
         normalized_concentrations = self.__normalize_concentrations(concentrations, wsi_maximum_concentration)
