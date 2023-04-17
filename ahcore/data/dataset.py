@@ -140,7 +140,7 @@ class DlupDataModule(pl.LightningDataModule):
             for manifest in manifests:
                 image_fn, _, overwrite_mpp = parse_wsi_attributes_from_manifest(self.data_description, manifest)
                 if (path_to_dump_stains / (image_fn.stem + ".h5")).is_file():
-                    logger.info(f"Staining vectors stage {image_fn.stem} are already cached...")
+                    logger.info(f"Staining vectors for {image_fn.stem} are already cached...")
                     continue
                 else:
                     slide_image = SlideImage.from_file_path(image_fn, overwrite_mpp=overwrite_mpp)
