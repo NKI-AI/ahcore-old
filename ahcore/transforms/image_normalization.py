@@ -27,6 +27,9 @@ def dump_staining_parameters(staining_parameters: dict, path_to_folder: Path) ->
     ----------
     staining_parameters: dict
         Staining parameters
+
+    path_to_folder: Path
+        Path to the folder where the h5 file must be saved.
     """
     if not path_to_folder.exists():
         path_to_folder.mkdir(parents=True)
@@ -46,6 +49,7 @@ def load_vector_from_h5_file(filenames):
     he_staining_vectors = torch.tensor(np.array(staining_vectors["wsi_staining_vectors"]))
     max_concentrations = torch.tensor(np.array(staining_vectors["max_wsi_concentration"]))
     return he_staining_vectors, max_concentrations
+
 
 def load_stainings_from_cache(filenames: list[str]) -> dict:
     staining_parameters = {}
@@ -201,7 +205,7 @@ class MacenkoNormalizer(nn.Module):
 
     def __compute_matrices(
             self, image_tensor: torch.Tensor, staining_parameters: dict[str: torch.Tensor]
-    ) -> tuple(torch.Tensor, torch.Tensor):
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
         """
@@ -211,7 +215,6 @@ class MacenkoNormalizer(nn.Module):
         optical_density, _ = self.convert_rgb_to_optical_density(image_tensor)
         for sample_idx in range(len(optical_density)):
             od_tensor = optical_density[sample_idx].view(-1, 3)
-            breakpoint()
             he = staining_parameters["wsi_staining_vectors"][sample_idx]
             # Calculate the concentrations of the H&E stains in each pixel.
             # We do this by solving a linear system of equations. (In this case, the system is overdetermined).
@@ -220,7 +223,7 @@ class MacenkoNormalizer(nn.Module):
             #     1. OD is the optical density of the pixels in the batch. The dimension is: (n x 3)
             #     2. HE is the H&E staining vectors (3 x 2). The dimension is: (3 x 2)
             #     3. C is the concentration of the H&E stains in each pixel. The dimension is: (2 x n)
-            he_concentrations, max_concentrations = _compute_concentrations(he, od_tensor)
+            he_concentrations, _ = _compute_concentrations(he, od_tensor)
             batch_con_vecs.append(he_concentrations)
         return torch.stack(batch_con_vecs, dim=0)
 
@@ -231,17 +234,21 @@ class MacenkoNormalizer(nn.Module):
         Normalize the concentrations of the H&E stains in each pixel against the reference concentration.
         Parameters
         ----------
+
         concentrations: torch.Tensor
             The concentration of the H&E stains in each pixel.
-        maximum_concentration
+
+        maximum_concentration: torch.Tensor
             The maximum concentration of the H&E stains in each pixel.
+
         Returns
         -------
         normalized_concentrations: torch.Tensor
             The normalized concentration of the H&E stains in each pixel.
         """
-        scaled_reference = torch.div(self._max_con_reference.to(maximum_concentration), maximum_concentration)
-        normalised_concentration = torch.mul(concentrations, scaled_reference.permute(0, 2, 1).contiguous())
+        scaled_reference = torch.div(self._max_con_reference, maximum_concentration)
+        scaled_reference = scaled_reference.unsqueeze(1).permute(0, 2, 1).contiguous()
+        normalised_concentration = torch.mul(concentrations, scaled_reference.to(concentrations))
         return normalised_concentration
 
     def __create_normalized_images(
@@ -249,12 +256,14 @@ class MacenkoNormalizer(nn.Module):
     ) -> torch.Tensor:
         """
         Create the normalized images from the normalized concentrations.
+
         Parameters
         ----------
         normalized_concentrations: torch.Tensor
             The normalized concentrations of the H&E stains in the image.
         image_tensor: torch.Tensor
             The image tensor to be normalized.
+
         Returns
         -------
         normalized_images: torch.Tensor
@@ -377,19 +386,23 @@ class MacenkoNormalizer(nn.Module):
     def fit(self, wsi: torch.Tensor, wsi_name: str, dump_to_folder: Optional[Path] = None) -> dict[str: torch.Tensor]:
         """
         Compress a WSI to a single matrix of eigenvectors and return staining parameters.
+
         Parameters:
         ----------
         wsi: torch.tensor
             A tensor containing a whole slide image of shape (1, channels, height, width)
+
         name: Path
             Path to the WSI file
+
         Returns:
         -------
         staining_parameters: dict[str: torch.Tensor, str: torch.Tensor]
             The eigenvectors of the optical density values of the pixels in the image.
+
         Note:
-            Dimensions of HE vector are: (3 x 2)
-            Dimensions of max cancentration vector are: (2)
+            Dimensions of HE_vector are: (3 x 2)
+            Dimensions of max concentration vector are: (2)
             Dimensions of wsi_eigenvectors are: (3 x 2)
         """
         logger.info("Fitting stain matrix for WSI: %s", wsi_name)
@@ -415,14 +428,15 @@ class MacenkoNormalizer(nn.Module):
         target_image: torch.Tensor
             The reference image for the stain normaliser.
         """
+        logger.info("Setting image for reference stainings...")
         staining_parameters = self.fit(wsi=target_image, wsi_name="target image")
         self._he_reference = staining_parameters["wsi_staining_vectors"]
         self._max_con_reference = staining_parameters["max_wsi_concentration"]
 
-    def forward(self, *args: tuple[torch.Tensor], **kwargs) -> list[torch.Tensor]:
-        output = []
+    def forward(self, *args: tuple[torch.Tensor], **kwargs) -> tuple[torch.Tensor]:
+        args = list(args)
         sample = args[0]
-        if kwargs["staining_parameters"]:
+        if "staining_parameters" in kwargs.keys():
             staining_parameters = kwargs["staining_parameters"]
         else:
             filenames = kwargs["filenames"]
@@ -430,12 +444,12 @@ class MacenkoNormalizer(nn.Module):
         concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
         wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
         normalized_concentrations = self.__normalize_concentrations(concentrations, wsi_maximum_concentration)
-        normalised_image = self.__create_normalized_images(normalized_concentrations, sample)
-        output.append(normalised_image)
+        normalised_image_tensor = self.__create_normalized_images(normalized_concentrations, sample)
+        args[0] = normalised_image_tensor
         # if self._return_stains:
         #     stains["image_hematoxylin"] = self.__get_h_stain(normalized_concentrations, image_tensor)
         #     stains["image_eosin"] = self.__get_e_stain(normalized_concentrations, image_tensor)
-        return output[0]
+        return tuple(args)
 
     def __repr__(self):
         return (
