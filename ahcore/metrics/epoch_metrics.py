@@ -25,7 +25,6 @@ EpochMetric = torchmetrics.Metric
 
 class PerTargetMetric(EpochMetric):
     """Base class for per target epoch metrics.
-
     Args:
         target_key: indicates the target with respect to which the robustness metrics are computed,
             e.g. "center"
@@ -33,7 +32,6 @@ class PerTargetMetric(EpochMetric):
             over targets. For example, when `target_key`="center", on top of having the desired
             metric per target, one will additionally also compute statistics (e.g. mean, std) over
             all centers and add these as separate metrics.
-
     Note: The base class expects that every derived class will implement the following methods:
         get_over_targets_metric_prefix - constructs the prefix of the metric names that will be used
             for tracking robustness metrics over all targets, e.g. "robustness-of-pred-over-centers"
@@ -87,12 +85,10 @@ class PerTargetMetric(EpochMetric):
 
 class PredictionAUCRobustness(PerTargetMetric):
     """Tracks AUC between predictions and a chosen target (e.g. center)
-
     On top of the base-class arguments, the following args are expected
         predictions_aggregation: indicates how an image batch of shape (B, * H, W) should be
             aggregated per-patch (e.g. mean of all values in (C, H, W) dimensions). The output after
             applying this operation is of shape (B,)
-
     """
 
     def __init__(
@@ -145,7 +141,6 @@ class PredictionAUCRobustness(PerTargetMetric):
 
 class FeatureAUCRobustness(PerTargetMetric):
     """Tracks AUC between patch-level feature aggregation and chosen target
-
     On top of the base-class arguments, the following args are expected
         feature_layer: integer indicating which features layer to be used from the encoder
             (0 = last layer)
@@ -155,7 +150,6 @@ class FeatureAUCRobustness(PerTargetMetric):
         features_per_target_aggregation: after applying features_patch_aggregation and computing the
             auc per target, we get for each target a tensor of dimension equal to C = num features.
             This string indicates how to aggregate this tensor into one statistic.
-
     """
 
     def __init__(
@@ -214,7 +208,6 @@ class LinearModelFeatureRobustness(PerTargetMetric):
     """Model-level AUC between features and a chosen target (e.g. center) using a linear model.
     The class reports metrics per target and aggregation across targets by desired statistics (e.g.
     min, max, mean, std)
-
     On top of the base-class arguments, the following args are expected:
         feature_layer: integer indicating which features layer to be used from the encoder
             (0 = last layer)
