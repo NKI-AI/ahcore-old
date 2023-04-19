@@ -1,3 +1,4 @@
 _target_: ahcore.data.dataset.DlupDataModule
 batch_size: ???  # specify in machine_settings
 num_workers: ???  # specify in machine_settings
+compute_staining: False

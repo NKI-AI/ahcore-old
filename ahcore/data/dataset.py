@@ -33,14 +33,15 @@ class DlupDataModule(pl.LightningDataModule):
     """Datamodule for the Ahcore framework. This datamodule is based on `dlup`."""
 
     def __init__(
-        self,
-        data_description: DataDescription,
-        pre_transform: Callable,
-        batch_size: int = 32,  # noqa,pylint: disable=unused-argument
-        validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
-        num_workers: int = 16,
-        persistent_workers: bool = False,
-        pin_memory: bool = False,
+            self,
+            data_description: DataDescription,
+            pre_transform: Callable,
+            batch_size: int = 32,  # noqa,pylint: disable=unused-argument
+            validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
+            num_workers: int = 16,
+            persistent_workers: bool = False,
+            pin_memory: bool = False,
+            compute_staining: bool = False,
     ) -> None:
         """
         Construct a DataModule based on a manifest.
@@ -87,6 +88,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._batch_size = self.hparams.batch_size  # type: ignore
         self._validate_batch_size = self.hparams.validate_batch_size  # type: ignore
+        self._compute_staining = compute_staining
 
         mask_threshold = data_description.mask_threshold
         if mask_threshold is None:
@@ -131,9 +133,9 @@ class DlupDataModule(pl.LightningDataModule):
         tile_overlap = grid.tile_overlap
         output_tile_size = getattr(grid, "output_tile_size", None)
 
-        if self.data_description.compute_staining is True:
+        if self._compute_staining is True:
             path_to_dump_stains = (
-                Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters"
+                    Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / "staining_parameters"
             )
             stain_computer = MacenkoNormalizer(return_stains=False)
             wsi_transformation = transforms.Compose([transforms.PILToTensor()])
@@ -224,7 +226,7 @@ class DlupDataModule(pl.LightningDataModule):
         return obj
 
     def _construct_dataloader_iterator(
-        self, data_iterator, batch_size: int
+            self, data_iterator, batch_size: int
     ) -> Iterator[tuple[dict[str, Any], DataLoader]] | None:
         if not data_iterator:
             return None
@@ -232,8 +234,8 @@ class DlupDataModule(pl.LightningDataModule):
         test_description = self.data_description.inference_grid
         # TODO: This should be somewhere where we validate the configuration
         if (
-            test_description.output_tile_size is not None
-            and test_description.output_tile_size != test_description.tile_size
+                test_description.output_tile_size is not None
+                and test_description.output_tile_size != test_description.tile_size
         ):
             raise ValueError(f"`output_tile_size should be equal to tile_size in inference or set to None.")
 
