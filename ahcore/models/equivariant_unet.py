@@ -196,7 +196,7 @@ class E2UNet(nn.Module):
 
         # Return features if required.
         if self.return_features:
-            return output, xi[-1].tensor
+            return output, tuple(xi)
         return output
 
 
