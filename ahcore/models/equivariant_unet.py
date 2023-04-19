@@ -10,12 +10,12 @@ from escnn import nn as enn  # type: ignore
 
 
 def double_conv(
-    group: gspaces.r2.general_r2.GeneralOnR2,
-    in_planes: int,
-    out_planes: int,
-    stride: int = 1,
-    dropout_rate: float = 0.3,
-    activation=enn.ReLU,
+        group: gspaces.r2.general_r2.GeneralOnR2,
+        in_planes: int,
+        out_planes: int,
+        stride: int = 1,
+        dropout_rate: float = 0.3,
+        activation=enn.ReLU,
 ):
     """Basic double convolutional layer with activation and batch normalization."""
     # TODO: Bias is set to false but check how that alligns with normal torch implementation...
@@ -110,14 +110,15 @@ class E2UNet(nn.Module):
     """
 
     def __init__(
-        self,
-        group,
-        num_classes: int,
-        input_channels: int = 3,
-        num_layers: int = 5,
-        hidden_features: int = 64,
-        bilinear: bool = False,
-        apply_softmax_out: bool = False,
+            self,
+            group,
+            num_classes: int,
+            input_channels: int = 3,
+            num_layers: int = 5,
+            hidden_features: int = 64,
+            bilinear: bool = False,
+            apply_softmax_out: bool = False,
+            return_features: bool = False,
     ):
 
         # Check wether num_layers is more than zero.
@@ -132,6 +133,7 @@ class E2UNet(nn.Module):
         self.hidden_features = hidden_features
         self.bilinear = bilinear
         self.apply_softmax_out = apply_softmax_out
+        self.return_features = return_features
 
         # Define a preprocessing conv to go from trivial to regular representation.
         self.feat_type_in_triv = enn.FieldType(group, self.input_channels * [group.trivial_repr])
@@ -166,32 +168,36 @@ class E2UNet(nn.Module):
         layers.append(enn.R2Conv(classify_in_type, output_type, kernel_size=1, bias=False))
         return nn.ModuleList(layers)
 
-    def forward(self, x):
+    def forward(self, input_data) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor]]:
         # Wrap in tensor and map to regular representation.
-        x = enn.GeometricTensor(x, self.feat_type_in_triv)
-        x = self.preproc_conv(x)
+        input_data = enn.GeometricTensor(input_data, self.feat_type_in_triv)
+        input_data = self.preproc_conv(input_data)
 
         # Feature extraction
-        xi = [self.layers[0](x)]
+        xi = [self.layers[0](input_data)]
 
         # Down path
-        for layer in self.layers[1 : self.num_layers]:
+        for layer in self.layers[1: self.num_layers]:
             xi.append(layer(xi[-1]))
 
         # Up path
-        for i, layer in enumerate(self.layers[self.num_layers : -1]):
+        for i, layer in enumerate(self.layers[self.num_layers: -1]):
             xi[-1] = layer(xi[-1], xi[-2 - i])
 
         # Final classification layer
-        out = self.layers[-1](xi[-1])
+        output = self.layers[-1](xi[-1])
 
         # Unwrap geomteric tensor.
-        out = out.tensor
+        output = output.tensor
 
         # Apply softmax to output distribution over classes.
         if self.apply_softmax_out:
-            out = torch.softmax(out, dim=1)
-        return out
+            output = torch.softmax(output, dim=1)
+
+        # Return features if required.
+        if self.return_features:
+            return output, xi[-1].tensor
+        return output
 
 
 if __name__ == "__main__":
