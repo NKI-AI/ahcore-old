@@ -26,12 +26,9 @@ class PreTransformTaskFactory:
         Pre-transforms are transforms that are applied to the samples directly originating from the dataset.
         These transforms are typically the same for the specific tasks (e.g., segmentation,
         detection or whole-slide classification).
-
         Each of these tasks has a specific constructor. In all cases, the final transforms convert the PIL image
         (as the image key of the output sample) to a tensor, and ensure that the sample dictionary can be collated.
-
         In ahcore, the augmentations are done separately and are part of the model in the forward function.
-
         Parameters
         ----------
         transforms : list
@@ -51,12 +48,10 @@ class PreTransformTaskFactory:
         - Labels are renamed (for instance if you wish to map several labels to on specific class)
         - `Polygon` and `Point` annotations are converted to a mask
         - The mask is one-hot encoded.
-
         Parameters
         ----------
         data_description : DataDescription
         requires_target : bool
-
         Returns
         -------
         PreTransformTaskFactory
@@ -111,7 +106,6 @@ class PreTransformTaskFactory:
 class LabelToClassIndex:
     """
     Maps label values to class indices according to the index_map specified in the data description.
-
     Example:
         If there are two tasks:
             - Task1 with classes {A, B, C}
@@ -137,12 +131,10 @@ class OneHotEncodeMask:
         """Create the one-hot encoding of the mask for segmentation.
         If we have `N` classes, the result will be an `(B, N + 1, H, W)` tensor, where the first sample is the
         background.
-
         Parameters
         ----------
         index_map : dict[str, int]
             Index map mapping the label name to the integer value it has in the mask.
-
         """
         self._index_map = index_map
 
@@ -211,12 +203,10 @@ class ImageToTensor:
 
 class ExtractTCGACenter:
     """Extracts center metadata for a TCGA WSI, given a metadata csv file
-
     Args:
         path: path to csv file containing 2 columns, TSS Code and Source Site (see example below)
         centers: list of centers to index. If a center is encountered that is not part of
             the provided list, it automatically gets assigned index len(centers)
-
     An example content of a metadata csv file would be
     TSS Code,Source Site
     01,International Genomics Consortium
