@@ -1,5 +1,5 @@
 # encoding: utf-8
-"""Different u-net implementation than unet.py"""
+"""Implementation of the UNet architecture."""
 from __future__ import annotations
 
 import torch
@@ -7,22 +7,22 @@ import torch.nn.functional as F
 from torch import nn
 
 
-def double_conv(in_channels, out_channels, dropout_rate=0.3, activation=nn.GELU()):
+def double_conv(in_channels, out_channels, dropout_rate=0.3, activation=nn.GELU()) -> nn.Sequential:
     """Basic double convolutional layer with activation and batch normalization."""
     return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        nn.Conv2d(in_channels, out_channels, kernel_size=(3, 3), padding=1),
         nn.Dropout2d(dropout_rate),
         nn.BatchNorm2d(out_channels),
         activation,
-        nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+        nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), padding=1),
         nn.Dropout2d(dropout_rate),
         nn.BatchNorm2d(out_channels),
-        nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, groups=out_channels),
+        nn.Conv2d(out_channels, out_channels, kernel_size=(3, 3), padding=1, groups=out_channels),
         activation,
     )
 
 
-def unet_downsample_layer(in_channels, out_channels, activation=nn.GELU()):
+def unet_downsample_layer(in_channels, out_channels, activation=nn.GELU()) -> nn.Sequential:
     """
     Basic UNet downsample layer with consisting of double convolutional layers followed
     with a 2d max pooling layer wrapped in nn.Sequential.
@@ -42,15 +42,15 @@ class UnetUpsampleLayer(nn.Module):
         if bilinear:
             _upsample = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True),
-                nn.Conv2d(in_channels, in_channels // 2, kernel_size=1),
+                nn.Conv2d(in_channels, in_channels // 2, kernel_size=(1, 1)),
             )
         else:
-            _upsample = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            _upsample = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=(2, 2), stride=(2, 2))
 
         self.upsample = _upsample
         self.conv = double_conv(in_channels, out_channels)
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2) -> torch.Tensor:
         x1 = self.upsample(x1)
 
         # Pad x1 to the size of x2
@@ -80,13 +80,14 @@ class UNet(nn.Module):
     """
 
     def __init__(
-        self,
-        num_input_ch: int,
-        num_classes: int,
-        depth: int = 5,
-        num_initial_filters: int = 128,
-        bilinear: bool = False,
-        apply_softmax_out: bool = False,
+            self,
+            num_input_ch: int,
+            num_classes: int,
+            depth: int = 5,
+            num_initial_filters: int = 128,
+            bilinear: bool = False,
+            apply_softmax_out: bool = False,
+            return_features: bool = False,
     ):
 
         # Check wether num_layers is more than zero.
@@ -100,11 +101,12 @@ class UNet(nn.Module):
         self.hidden_features = num_initial_filters
         self.bilinear = bilinear
         self.apply_softmax_out = apply_softmax_out
+        self.return_features = return_features
 
         # Create layers of the UNet model.
         self.layers = self.create_unet()
 
-    def create_unet(self):
+    def create_unet(self) -> nn.ModuleList:
         # Define a feature extractor.
         layers = [double_conv(self.input_channels, self.hidden_features)]
 
@@ -120,27 +122,31 @@ class UNet(nn.Module):
             feats //= 2
 
         # Define the final classification layer.
-        layers.append(nn.Conv2d(feats, self.num_classes, kernel_size=1))
+        layers.append(nn.Conv2d(feats, self.num_classes, kernel_size=(1, 1)))
         return nn.ModuleList(layers)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor]]:
         x = x.float()
 
         # Feature extraction
         xi = [self.layers[0](x)]
 
         # Down path
-        for layer in self.layers[1 : self.num_layers]:
+        for layer in self.layers[1: self.num_layers]:
             xi.append(layer(xi[-1]))
 
         # Up path
-        for i, layer in enumerate(self.layers[self.num_layers : -1]):
+        for i, layer in enumerate(self.layers[self.num_layers: -1]):
             xi[-1] = layer(xi[-1], xi[-2 - i])
 
         # Final classification layer
-        out = self.layers[-1](xi[-1])
+        output = self.layers[-1](xi[-1])
 
         # Apply softmax to output distribution over classes.
         if self.apply_softmax_out:
-            out = torch.softmax(out, dim=1)
-        return out
+            output = torch.softmax(output, dim=1)
+
+        # Return features if required.
+        if self.return_features:
+            return output, tuple(xi)
+        return output

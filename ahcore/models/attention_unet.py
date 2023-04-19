@@ -163,7 +163,15 @@ class OutputLayer(nn.Module):
 class AttentionUnet(nn.Module):
     """AttentionUnet"""
 
-    def __init__(self, inp_channel: int, kernel_multiplier: int, depth: int, dropout_rate: float, num_classes: int, return_features: bool = False):
+    def __init__(
+        self,
+        inp_channel: int,
+        kernel_multiplier: int,
+        depth: int,
+        dropout_rate: float,
+        num_classes: int,
+        return_features: bool = False,
+    ):
         super().__init__()
         self.return_features = return_features
         self.encoder = Encoder(inp_channel, kernel_multiplier, dropout_rate, depth=depth)
