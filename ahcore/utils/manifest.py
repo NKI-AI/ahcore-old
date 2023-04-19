@@ -51,8 +51,9 @@ _ImageBackends = {
     "OPENSLIDE": ImageBackend.OPENSLIDE,
 }
 
-AnnotationReaders = Enum(value="AnnotationReaders",
-                         names=[(field, field) for field in _AnnotationReaders.keys()])  # type: ignore
+AnnotationReaders = Enum(
+    value="AnnotationReaders", names=[(field, field) for field in _AnnotationReaders.keys()]
+)  # type: ignore
 ImageBackends = Enum(value="ImageBackends", names=[(field, field) for field in _ImageBackends.keys()])  # type: ignore
 
 
@@ -169,8 +170,9 @@ def manifests_from_data_description(data_description: DataDescription) -> Splitt
     return splitted_manifest
 
 
-def parse_wsi_attributes_from_manifest(data_description: DataDescription, manifest: ImageManifest) -> tuple[
-    Path, _ImageBackends, float | None]:
+def parse_wsi_attributes_from_manifest(
+    data_description: DataDescription, manifest: ImageManifest
+) -> tuple[Path, _ImageBackends, float | None]:
     overwrite_mpp = None
     if manifest.mpp:
         overwrite_mpp = (manifest.mpp, manifest.mpp)
@@ -181,7 +183,7 @@ def parse_wsi_attributes_from_manifest(data_description: DataDescription, manife
 
 
 def _parse_annotations(
-        annotation_model: AnnotationModel | None, *, base_dir: Path
+    annotation_model: AnnotationModel | None, *, base_dir: Path
 ) -> WsiAnnotations | SlideImage | None:
     _annotations = None
     if not annotation_model:
@@ -203,14 +205,14 @@ def _parse_annotations(
 
 
 def image_manifest_to_dataset(
-        data_description: DataDescription,
-        manifest: ImageManifest,
-        mpp: Optional[float],
-        tile_size: tuple[int, int],
-        tile_overlap: tuple[int, int],
-        output_tile_size: tuple[int, int] | None = None,
-        transform: Optional[Callable] = None,
-        stage: str = TrainerFn.FITTING,
+    data_description: DataDescription,
+    manifest: ImageManifest,
+    mpp: Optional[float],
+    tile_size: tuple[int, int],
+    tile_overlap: tuple[int, int],
+    output_tile_size: tuple[int, int] | None = None,
+    transform: Optional[Callable] = None,
+    stage: str = TrainerFn.FITTING,
 ) -> TiledROIsSlideImageDataset:
     """Create a `TiledROIsSlideImageDataset` from an `ImageManifest`.
 
