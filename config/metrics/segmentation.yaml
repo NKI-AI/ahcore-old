@@ -3,6 +3,7 @@ tile_level:
 
 wsi_level:
   _target_: ahcore.metrics.WSIMetricFactory.for_segmentation
+  compute_overall_dice: True
 
 prediction_robustness:
   _target_: ahcore.metrics.epoch_metrics.PredictionAUCRobustness
@@ -25,4 +26,6 @@ linear_probing:
   target_aggregations: [ "min", "max", "mean", "std" ]
   model_name: "LogisticRegression"
   test_size: 0.3
-  scoring: "accuracy"
+  max_iter: 1000
+  scoring: "roc_auc"
+  multi_class: "ovr"

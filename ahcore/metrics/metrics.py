@@ -149,9 +149,10 @@ class WSIMetric(abc.ABC):
 class WSIDiceMetric(WSIMetric):
     """WSI Dice metric class, computes the dice score over the whole WSI"""
 
-    def __init__(self, data_description: DataDescription):
+    def __init__(self, data_description: DataDescription, compute_overall_dice: bool = False) -> None:
         super().__init__(data_description=data_description)
         self.wsis = {}
+        self.compute_overall_dice = compute_overall_dice
         self._num_classes = self._data_description.num_classes
 
         # Invert the index map
@@ -187,19 +188,58 @@ class WSIDiceMetric(WSIMetric):
             cardinality = self.wsis[wsi_name][class_idx]["cardinality"]
             self.wsis[wsi_name][class_idx]["dice"] = _compute_dice(intersection, cardinality)
 
+    def _get_overall_dice(self):
+        """
+        Compute the overall dice score (per class) over all the WSIs
+
+        Returns
+        -------
+        dict
+            Dictionary with the overall dice scores across wsis per class
+        """
+        overall_dices = {class_idx: {"total_intersection": 0, "total_cardinality": 0, "overall_dice": 0} for
+                          class_idx in range(self._num_classes)}
+        total_true_positives = 0
+        total_cardinality = 0
+        for wsi_name in self.wsis:
+            for class_idx in range(self._num_classes):
+                total_true_positives += self.wsis[wsi_name][class_idx]["intersection"]
+                total_cardinality += self.wsis[wsi_name][class_idx]["cardinality"]
+                overall_dices[class_idx]["total_intersection"] += total_true_positives
+                overall_dices[class_idx]["total_cardinality"] += total_cardinality
+        for class_idx in overall_dices.keys():
+            overall_dices[class_idx]["overall_dice"] = (2 * overall_dices[class_idx]["total_intersection"]) / \
+                                                               overall_dices[class_idx]["total_cardinality"]
+        return {class_idx: overall_dices[class_idx]["overall_dice"] for class_idx in overall_dices.keys()}
+
+    def _get_dice_averaged_over_total_wsis(self):
+        """
+        Compute the dice score (per class) averaged over all the WSIs
+
+        Returns
+        -------
+        dict
+            Dictionary with the dice scores averaged over all the WSIs per class
+        """
+        dices = {class_idx: [] for class_idx in range(self._num_classes)}
+        for wsi_name in self.wsis:
+            self.get_wsi_score(wsi_name)
+            for class_idx in range(self._num_classes):
+                dices[class_idx].append(self.wsis[wsi_name][class_idx]["dice"].item())
+        return {class_idx: sum(dices[class_idx]) / len(dices[class_idx]) for class_idx in dices.keys()}
+
     def _initialize_wsi_dict(self, wsi_name: str) -> None:
         self.wsis[wsi_name] = {
             class_idx: {"intersection": 0, "cardinality": 0, "dice": None} for class_idx in range(self._num_classes)
         }
 
     def get_average_score(self) -> dict[str, float]:
-        dices = {class_idx: [] for class_idx in range(self._num_classes)}
-        for wsi_name in self.wsis:
-            self.get_wsi_score(wsi_name)
-            for class_idx in range(self._num_classes):
-                dices[class_idx].append(self.wsis[wsi_name][class_idx]["dice"].item())
+        if self.compute_overall_dice:
+            dices = self._get_overall_dice()
+        else:
+            dices = self._get_dice_averaged_over_total_wsis()
         avg_dict = {
-            f"{self.name}/{self._label_to_class[idx]}": sum(value) / len(value) for idx, value in dices.items()
+            f"{self.name}/{self._label_to_class[idx]}": value for idx, value in dices.items()
         }
         return avg_dict
 
