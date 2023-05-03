@@ -303,9 +303,9 @@ class AhCoreLightningModule(pl.LightningModule):
         gathered_preds = self.all_gather(preds)
         return gathered_preds
 
-    def on_predict_epoch_end(self, results) -> None:
+    def on_predict_epoch_end(self):
         """Call all the inference trackers to update"""
-        self.update_predict_trackers(results)
+        self.update_predict_trackers(self.trainer.predict_loop.predictions)
         self.predict_metadata = self.INFERENCE_DICT  # reset the metadata
 
     @rank_zero_only
