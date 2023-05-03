@@ -199,14 +199,10 @@ class WSIDiceMetric(WSIMetric):
         """
         overall_dices = {class_idx: {"total_intersection": 0, "total_cardinality": 0, "overall_dice": 0} for
                           class_idx in range(self._num_classes)}
-        total_true_positives = 0
-        total_cardinality = 0
         for wsi_name in self.wsis:
-            for class_idx in range(self._num_classes):
-                total_true_positives += self.wsis[wsi_name][class_idx]["intersection"]
-                total_cardinality += self.wsis[wsi_name][class_idx]["cardinality"]
-                overall_dices[class_idx]["total_intersection"] += total_true_positives
-                overall_dices[class_idx]["total_cardinality"] += total_cardinality
+            for class_idx in self.wsis[wsi_name]:
+                overall_dices[class_idx]["total_intersection"] += self.wsis[wsi_name][class_idx]["intersection"]
+                overall_dices[class_idx]["total_cardinality"] += self.wsis[wsi_name][class_idx]["cardinality"]
         for class_idx in overall_dices.keys():
             overall_dices[class_idx]["overall_dice"] = (2 * overall_dices[class_idx]["total_intersection"]) / \
                                                                overall_dices[class_idx]["total_cardinality"]
