@@ -120,3 +120,4 @@ tools/logs
 config/machine_settings/*
 !config/machine_settings/example.yaml
 /ahcore/models/attention_unet.py
+/ahcore/custom_trackers.py
