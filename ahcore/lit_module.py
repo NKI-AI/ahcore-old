@@ -301,7 +301,9 @@ class AhCoreLightningModule(pl.LightningModule):
         inputs = batch["image"]
         preds = self._model(inputs)
         gathered_preds = self.all_gather(preds)
-        return gathered_preds
+        _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
+        output = {"predictions": gathered_preds, **_relevant_dict}
+        return output
 
     def on_predict_epoch_end(self) -> None:
         """Call all the inference trackers to update"""
