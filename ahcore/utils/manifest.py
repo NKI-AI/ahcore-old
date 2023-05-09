@@ -282,7 +282,7 @@ def image_manifest_to_dataset(
         tile_mode=TilingMode.overflow,
         grid_order=GridOrder.C,
         crop=False,
-        mask=_mask,
+        mask=_mask if stage != TrainerFn.PREDICTING else None,
         mask_threshold=mask_threshold,
         output_tile_size=output_tile_size,
         rois=rois,  # type: ignore

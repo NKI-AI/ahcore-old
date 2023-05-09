@@ -21,7 +21,8 @@ from dlup._image import Resampling
 logger = get_logger(__name__)
 
 
-def create_pred_iterator(predictions: list[Tensor]):
+def create_pred_iterator(prediction_batch: dict):
+    predictions = [prediction_batch[k]["predictions"] for k in range(len(prediction_batch))]
     cat_predictions = torch.cat(predictions)
     arg_predictions = torch.argmax(cat_predictions, dim=1)
     for pred in arg_predictions:
@@ -57,7 +58,7 @@ class TiffWriter(Tracker):
 
         self._interpolator = Resampling.NEAREST if is_mask else None
 
-    def __call__(self, predictions: list[Tensor], metadata: dict[str, Any], *args, **kwargs):
+    def __call__(self, prediction_batch: dict, metadata: dict[str, Any], *args, **kwargs):
         filename = Path(self.save_dir) / Path(str(metadata["filename"]) + ".tiff")
         logger.info(f"Writing Tiff for {filename.stem}")
         os.makedirs(filename.parent)
@@ -72,7 +73,7 @@ class TiffWriter(Tracker):
             interpolator=self._interpolator,
         )
 
-        pred_iter = create_pred_iterator(predictions)
+        pred_iter = create_pred_iterator(prediction_batch)
         tiff_writer.from_tiles_iterator(pred_iter)
 
 
@@ -80,7 +81,8 @@ class DumpToDisk(Tracker):
     def __init__(self, save_dir):
         self.save_dir = save_dir
 
-    def __call__(self, predictions: list[list[Tensor]], metadata: dict[str, Any], *args, **kwargs):
+    def __call__(self, prediction_batch: dict, metadata: dict[str, Any], *args, **kwargs):
+        predictions = [prediction_batch[k]["predictions"] for k in range(len(prediction_batch))]
         filename = Path(self.save_dir) / Path(str(metadata["filename"]) + ".h5")
         logger.info(f"Dumping Predictions to disk for {filename.stem}")
         os.makedirs(filename.parent, exist_ok=True)
