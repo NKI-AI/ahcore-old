@@ -50,6 +50,8 @@ class DataDescription:
     data_dir: Path
     manifest_path: Path
     dataset_split_path: Optional[Path]
+    center_info_path: Optional[Path]
+    centers: Optional[list[str]]
     annotations_dir: Path
 
     training_grid: GridDescription
@@ -57,6 +59,7 @@ class DataDescription:
 
     index_map: Optional[dict[str, int]]
     max_val_tiffs: Optional[int] = None
+    extract_center: Optional[bool] = False
     remap_labels: Optional[dict[str, str]] = None
     colors: Optional[dict[str, str]] = None
     use_class_weights: Optional[bool] = False

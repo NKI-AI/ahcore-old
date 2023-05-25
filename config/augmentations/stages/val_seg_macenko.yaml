@@ -2,6 +2,12 @@ _target_: ahcore.transforms.augmentations.AugmentationFactory
 
 # These transforms will be applied in order as a first step.
 initial_transforms:
+  - _target_: ahcore.transforms.image_normalization.MacenkoNormalizer
+    alpha: 1.0
+    beta: 0.15
+    transmitted_intensity: 240.0
+    return_stains: False
+    probability: 1.0
   - _target_: ahcore.transforms.augmentations.MeanStdNormalizer
     mean: ${data_description.normalize_mean}
     std: ${data_description.normalize_std}

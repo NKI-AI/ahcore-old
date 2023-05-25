@@ -13,7 +13,7 @@ import hydra
 import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer, seed_everything
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers import Logger
 from torch import nn
 
 from ahcore.utils.data import DataDescription
@@ -121,7 +121,7 @@ def train(config: DictConfig) -> torch.Tensor | None:
                 callbacks.append(hydra.utils.instantiate(cb_conf))
 
     # Init lightning loggers
-    lightning_loggers: list[LightningLoggerBase] = []
+    lightning_loggers: list[Logger] = []
     if "logger" in config:
         for _, lg_conf in config.logger.items():
             if "_target_" in lg_conf:
@@ -245,7 +245,7 @@ def inference(config: DictConfig) -> None:
                 callbacks.append(hydra.utils.instantiate(cb_conf))
 
     # Init lightning loggers
-    lightning_loggers: list[LightningLoggerBase] = []
+    lightning_loggers: list[Logger] = []
     if "logger" in config:
         for _, lg_conf in config.logger.items():
             if "_target_" in lg_conf:

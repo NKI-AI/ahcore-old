@@ -68,8 +68,9 @@ class MeanStdNormalizer(nn.Module):
         else:
             self._std = nn.Parameter(torch.Tensor(std), requires_grad=False)
 
-    def forward(self, *args: torch.Tensor, data_keys: list[str | int | DataKey]):
+    def forward(self, *args: torch.Tensor, **kwargs):
         output = []
+        data_keys = kwargs["data_keys"]
         for sample, data_key in zip(args, data_keys):
             if data_key in [DataKey.INPUT, 0, "INPUT"]:
                 sample = sample / 255.0
@@ -97,10 +98,10 @@ class CenterCrop(nn.Module):
             _size = tuple(size)
 
         self._cropper = K.CenterCrop(
-            size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice", return_transform=None
+            size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice"
         )
 
-    def forward(self, *sample: torch.Tensor, data_keys: list[str | int | DataKey] = None):
+    def forward(self, *sample: torch.Tensor, data_keys: list[str | int | DataKey] = None, **kwargs):
         output = [self._cropper(item) for item in sample]
 
         if len(output) == 1:
@@ -199,10 +200,10 @@ class AugmentationFactory(nn.Module):
 
     def forward(self, sample):
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
-
         if self._initial_transforms:
+            kwargs = {"data_keys": self._data_keys, "filenames": sample["path"]}
             for transform in self._initial_transforms:
-                output_data = transform(*output_data, data_keys=self._data_keys)
+                output_data = transform(*output_data, **kwargs)
 
         if isinstance(output_data, torch.Tensor):
             output_data = [output_data]

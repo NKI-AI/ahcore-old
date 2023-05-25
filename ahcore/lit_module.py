@@ -19,7 +19,7 @@ import torch.optim.optimizer
 from dlup.data.dataset import ConcatDataset
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.trainer.states import TrainerFn
-from pytorch_lightning.utilities.distributed import rank_zero_only
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
@@ -81,9 +81,16 @@ class AhCoreLightningModule(pl.LightningModule):
         self._augmentations = augmentations
 
         self._loss = loss
+        self._robustness_metrics = []
         if metrics is not None:
             self._metrics = metrics.get("tile_level")
             self._wsi_metrics = metrics.get("wsi_level")
+            if "prediction_robustness" in metrics:
+                self._robustness_metrics.append(metrics["prediction_robustness"])
+            if "feature_robustness" in metrics:
+                self._robustness_metrics.append(metrics["feature_robustness"])
+            if "linear_probing" in metrics:
+                self._robustness_metrics.append(metrics["linear_probing"])
 
         self._plot_batch = partial(plot_batch, index_map=data_description.index_map, colors=data_description.colors)
         if not trackers:
@@ -168,7 +175,12 @@ class AhCoreLightningModule(pl.LightningModule):
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        _prediction = self._model(_input)
+        if self._model.return_features:
+            _prediction, _features = self._model(_input)
+            batch["features"] = _features
+        else:
+            _prediction = self._model(_input)
+        batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)
         # The relevant_dict contains values to know where the tiles originate.
         _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
@@ -185,7 +197,8 @@ class AhCoreLightningModule(pl.LightningModule):
         if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
             current_wsi_filename = self._get_current_val_wsi_filename()
             self._process_wsi_metrics(_prediction, _target, str(current_wsi_filename), roi)
-
+            for robustness_metric in self._robustness_metrics:
+                robustness_metric.update(batch)
             # add the current predictions to the queue, to be processed by the tiff writer process
             curr_val_dataset, num_grid_tiles = self._get_current_val_dataset(return_num_tiles=True)
 
@@ -258,6 +271,10 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def on_validation_epoch_end(self) -> None:
+        if len(self._robustness_metrics) > 0:
+            for robustness_metric in self._robustness_metrics:
+                self.log_dict(robustness_metric.compute(), sync_dist=True, prog_bar=True)
+                robustness_metric.reset()
         "Adds a marker _WSI_DONE for the last WSI and LOOP_DONE flag to the queue and waits for child process to finish"
         self._predictions_queue.put(
             [{"tile_shape": self._tile_shape}, _WSI_DONE, None]

@@ -51,7 +51,9 @@ _ImageBackends = {
     "OPENSLIDE": ImageBackend.OPENSLIDE,
 }
 
-AnnotationReaders = Enum(value="AnnotationReaders", names=[(field, field) for field in _AnnotationReaders.keys()])  # type: ignore
+AnnotationReaders = Enum(
+    value="AnnotationReaders", names=[(field, field) for field in _AnnotationReaders.keys()]
+)  # type: ignore
 ImageBackends = Enum(value="ImageBackends", names=[(field, field) for field in _ImageBackends.keys()])  # type: ignore
 
 
@@ -168,6 +170,18 @@ def manifests_from_data_description(data_description: DataDescription) -> Splitt
     return splitted_manifest
 
 
+def parse_wsi_attributes_from_manifest(
+    data_description: DataDescription, manifest: ImageManifest
+) -> tuple[Path, _ImageBackends, float | None]:
+    overwrite_mpp = None
+    if manifest.mpp:
+        overwrite_mpp = (manifest.mpp, manifest.mpp)
+    image_fn, _image_backend = manifest.image
+    image_fn = data_description.data_dir / image_fn
+    image_backend = _ImageBackends[_image_backend.name]
+    return image_fn, image_backend, overwrite_mpp
+
+
 def _parse_annotations(
     annotation_model: AnnotationModel | None, *, base_dir: Path
 ) -> WsiAnnotations | SlideImage | None:
@@ -226,10 +240,8 @@ def image_manifest_to_dataset(
     TiledROIsSlideImageDataset
         A `TiledROIsSlideImageDataset` object.
     """
-    image_fn, _image_backend = manifest.image
-    image_fn = data_description.data_dir / image_fn
-    image_backend = _ImageBackends[_image_backend.name]
-
+    # This line parses image path and backend from the manifest
+    image_fn, image_backend, overwrite_mpp = parse_wsi_attributes_from_manifest(data_description, manifest)
     # This block parses the annotations
     _annotations = _parse_annotations(manifest.annotations, base_dir=data_description.annotations_dir)
 
@@ -251,9 +263,12 @@ def image_manifest_to_dataset(
         labels = [(k, v) for k, v in manifest.labels.items()]
 
     kwargs = {}
-    if manifest.mpp:
+    if overwrite_mpp is not None:
         logger.info("Overriding mpp with value from manifest: %s", manifest.mpp)
         kwargs["overwrite_mpp"] = (manifest.mpp, manifest.mpp)
+
+    if rois is not None:
+        kwargs["limit_bounds"] = False
 
     # FIXME: rois has correct type, but not what dlup expects (Optional[Tuple[Tuple[int, ...]]])
     # If we are in inference mode, this means that we need to select *all* tiles covered by the ROI in contrast

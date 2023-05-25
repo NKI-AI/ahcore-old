@@ -1,5 +1,3 @@
-_target_: ahcore.lit_module.AhCoreLightningModule
-
 model:
   _target_: ahcore.models.equivariant_unet.E2UNet
   _partial_: true
@@ -28,4 +26,3 @@ scheduler:
   mode: min
   factor: 0.1
   patience: 100
-

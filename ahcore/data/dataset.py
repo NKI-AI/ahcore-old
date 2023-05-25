@@ -17,7 +17,10 @@ from torch.utils.data import DataLoader, Sampler
 import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
+from ahcore.utils.manifest import (
+    image_manifest_to_dataset,
+    manifests_from_data_description,
+)
 
 logger = get_logger(__name__)
 
@@ -106,7 +109,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._num_classes = data_description.num_classes
 
-    def setup(self, stage: str | None = None) -> None:
+    def setup(self, stage: TrainerFn | None = None) -> None:
         if not stage:
             return
 

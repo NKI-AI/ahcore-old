@@ -5,7 +5,7 @@
 
 defaults:
   - _self_
-  - /transforms/stages@fit: train_seg_macenko
-  - /transforms/stages@validate: val_seg
-  - /transforms/stages@test: val_seg
-  - /transforms/stages@predict: null
+  - /augmentations/stages@fit: train_seg_macenko
+  - /augmentations/stages@validate: val_seg_macenko
+  - /augmentations/stages@test: val_seg_macenko
+  - /augmentations/stages@predict: val_seg_macenko

@@ -42,7 +42,6 @@ def unet_downsample_layer(group, in_planes, out_planes, activation=enn.ReLU):
     """
     Basic UNet downsample layer with consisting of double convolutional layers followed
     with a 2d max pooling layer wrapped in nn.Sequential.
-
     # TODO: added point max-pool here because of unet implementation tryout different ones!.
     """
     in_type = enn.FieldType(group, in_planes * [group.regular_repr])
@@ -102,7 +101,6 @@ class E2UNet(nn.Module):
     Paper: `U-Net: Convolutional Networks for Biomedical Image Segmentation
     <https://arxiv.org/abs/1505.04597>`_
     Paper authors: Olaf Ronneberger, Philipp Fischer, Thomas Brox
-
     Args:
         num_classes     : Number of output classes required
         input_channels  : Number of channels in input images (default 3)
@@ -167,13 +165,13 @@ class E2UNet(nn.Module):
         layers.append(enn.R2Conv(classify_in_type, output_type, kernel_size=1, bias=False))
         return nn.ModuleList(layers)
 
-    def forward(self, x):
+    def forward(self, input_data) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor]]:
         # Wrap in tensor and map to regular representation.
-        x = enn.GeometricTensor(x, self.feat_type_in_triv)
-        x = self.preproc_conv(x)
+        input_data = enn.GeometricTensor(input_data, self.feat_type_in_triv)
+        input_data = self.preproc_conv(input_data)
 
         # Feature extraction
-        xi = [self.layers[0](x)]
+        xi = [self.layers[0](input_data)]
 
         # Down path
         for layer in self.layers[1 : self.num_layers]:
@@ -184,15 +182,16 @@ class E2UNet(nn.Module):
             xi[-1] = layer(xi[-1], xi[-2 - i])
 
         # Final classification layer
-        out = self.layers[-1](xi[-1])
+        output = self.layers[-1](xi[-1])
 
         # Unwrap geomteric tensor.
-        out = out.tensor
+        output = output.tensor
 
         # Apply softmax to output distribution over classes.
         if self.apply_softmax_out:
-            out = torch.softmax(out, dim=1)
-        return out
+            output = torch.softmax(output, dim=1)
+
+        return output
 
 
 if __name__ == "__main__":

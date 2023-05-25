@@ -3,10 +3,11 @@ _target_: ahcore.lit_module.AhCoreLightningModule
 model:
   _target_: ahcore.models.attention_unet.AttentionUnet
   _partial_: true
-  num_input_ch: 3
+  inp_channel: 3
+  kernel_multiplier: 7
   depth: 4
-  num_initial_filters: 96
-  dropout_prob: 0.1
+  dropout_rate: 0.1
+  return_features: True
 
 optimizer:
   _target_: torch.optim.Adam
