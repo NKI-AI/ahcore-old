@@ -1,17 +1,10 @@
 # encoding: utf-8
 """
 Histopathology stain specific image normalization functions
-# TODO: Support `return_stains = True` for MacenkoNormalization()
 """
 from __future__ import annotations
-
-import os
-from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
-import h5py
-import numpy as np
 import torch
 import torch.nn as nn
 from dlup import SlideImage
@@ -422,7 +415,7 @@ class MacenkoNormalizer(nn.Module):
         hes = []
         max_concentrations = []
         for filename in filenames:
-            if filename in self._stain_vector_cache.keys():
+            if filename in self._stain_vector_cache:
                 he, max_con = self._stain_vector_cache[filename]
             else:
                 # Now we need to compute it.
@@ -431,11 +424,12 @@ class MacenkoNormalizer(nn.Module):
                     logger.info("Computing Macenko staining vector for %s", filename)
                     stain_computer = MacenkoNormalizer(return_stains=False)
 
-                    max_size = max(slide_image.size)
-                    # So we want an image of about 4000 pixels on the largest size, so we need to find that scale.
-                    scaling = max_size / 4000
+                    # We compute the vector at mpp = 16
+                    requested_mpp = 16
+                    scaling = slide_image.get_scaling(requested_mpp)
                     scaled_wsi = slide_image.get_scaled_view(scaling)
                     scaled_size = slide_image.get_scaled_size(scaling)
+                    logger.info("Computing Macenko staining vector for %s resized to %s (mpp=%s).", filename, scaled_size, requested_mpp)
                     region = TVT.PILToTensor()(scaled_wsi.read_region((0, 0), scaled_size).convert("RGB")).unsqueeze(0)
 
                     _staining_parameters = stain_computer.fit(wsi=region, wsi_name=Path(filename).stem)

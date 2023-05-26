@@ -63,6 +63,9 @@ def train(config: DictConfig) -> torch.Tensor | None:
     if config.get("seed"):
         seed_everything(config.seed, workers=True)
 
+    # TODO: Configurable?
+    torch.set_float32_matmul_precision("high")
+
     # Convert relative ckpt path to absolute path if necessary
     checkpoint_path = config.get("ckpt_path")
     if checkpoint_path and not os.path.isabs(checkpoint_path):

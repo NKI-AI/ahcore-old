@@ -29,6 +29,7 @@ class PreTransformTaskFactory:
         Each of these tasks has a specific constructor. In all cases, the final transforms convert the PIL image
         (as the image key of the output sample) to a tensor, and ensure that the sample dictionary can be collated.
         In ahcore, the augmentations are done separately and are part of the model in the forward function.
+
         Parameters
         ----------
         transforms : list
@@ -48,10 +49,12 @@ class PreTransformTaskFactory:
         - Labels are renamed (for instance if you wish to map several labels to on specific class)
         - `Polygon` and `Point` annotations are converted to a mask
         - The mask is one-hot encoded.
+
         Parameters
         ----------
         data_description : DataDescription
         requires_target : bool
+
         Returns
         -------
         PreTransformTaskFactory
@@ -59,7 +62,9 @@ class PreTransformTaskFactory:
         """
         transforms: list[Callable] = []
         if data_description.extract_center:
-            transforms.append(ExtractTCGACenter(meta_path=data_description.center_info_path, centers=data_description.centers))
+            transforms.append(
+                ExtractTCGACenter(meta_path=data_description.center_info_path, centers=data_description.centers)
+            )
         if not requires_target:
             return cls(transforms)
 
