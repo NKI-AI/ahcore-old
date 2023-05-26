@@ -17,10 +17,7 @@ from torch.utils.data import DataLoader, Sampler
 import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest import (
-    image_manifest_to_dataset,
-    manifests_from_data_description,
-)
+from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
 
 logger = get_logger(__name__)
 
@@ -194,7 +191,7 @@ class DlupDataModule(pl.LightningDataModule):
                 torch.save(obj, file)
         else:
             with open(filename, "rb") as file:
-                logger.info(f"Loading %s from cache %s file", name, filename)
+                logger.info("Loading %s from cache %s file", name, filename)
                 obj = torch.load(file)
 
         return obj

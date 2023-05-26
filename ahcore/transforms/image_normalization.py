@@ -3,6 +3,7 @@
 Histopathology stain specific image normalization functions
 """
 from __future__ import annotations
+
 from pathlib import Path
 
 import torch
@@ -136,9 +137,11 @@ class MacenkoNormalizer(nn.Module):
         transmitted_intensity: int = 240,
         return_stains: bool = False,
         probability: float = 1.0,
+        requested_mpp: float = 16.0,
     ):
         """
         Normalize staining appearence of hematoxylin & eosin stained images. Based on [1].
+
         Parameters
         ----------
         alpha : float
@@ -151,6 +154,10 @@ class MacenkoNormalizer(nn.Module):
             If true, the output will also include the H&E channels
         probability : bool
             Probability of applying the transform
+        requested_mpp : float
+            The mpp used to compute the staining vectors. The default value of 16.0 shows good performance both in
+            terms of feature stability and computational efficiency.
+
         References
         ----------
         [1] A method for normalizing histology slides for quantitative analysis. M. Macenko et al., ISBI 2009
@@ -161,6 +168,8 @@ class MacenkoNormalizer(nn.Module):
         self._beta = torch.tensor(beta)
         self._transmitted_intensity = torch.tensor(transmitted_intensity)
         self._return_stains = return_stains
+        self._requested_mpp = requested_mpp
+
         if self._return_stains:
             raise NotImplementedError("Return stains is not implemented yet.")
 
@@ -425,11 +434,15 @@ class MacenkoNormalizer(nn.Module):
                     stain_computer = MacenkoNormalizer(return_stains=False)
 
                     # We compute the vector at mpp = 16
-                    requested_mpp = 16
-                    scaling = slide_image.get_scaling(requested_mpp)
+                    scaling = slide_image.get_scaling(self._requested_mpp)
                     scaled_wsi = slide_image.get_scaled_view(scaling)
                     scaled_size = slide_image.get_scaled_size(scaling)
-                    logger.info("Computing Macenko staining vector for %s resized to %s (mpp=%s).", filename, scaled_size, requested_mpp)
+                    logger.info(
+                        "Computing Macenko staining vector for %s resized to %s (mpp=%s).",
+                        filename,
+                        scaled_size,
+                        self._requested_mpp,
+                    )
                     region = TVT.PILToTensor()(scaled_wsi.read_region((0, 0), scaled_size).convert("RGB")).unsqueeze(0)
 
                     _staining_parameters = stain_computer.fit(wsi=region, wsi_name=Path(filename).stem)
