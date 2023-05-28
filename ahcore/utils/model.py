@@ -1,5 +1,6 @@
 # encoding: utf-8
-from typing import Any, List, Optional, Type
+from __future__ import annotations
+from typing import Any, Optional, Type
 
 import torch
 import torch.nn as nn
@@ -13,7 +14,7 @@ class ExtractFeaturesHook:
     ----------
     model : torch.nn.Module
         The model to which the hooks will be added.
-    layer_names : List[str]
+    layer_names : list[str]
         The names of the layers from which the feature maps will be extracted.
 
     Attributes
@@ -31,9 +32,9 @@ class ExtractFeaturesHook:
     ...     conv2_features = hook.features["conv2"]
     """
 
-    def __init__(self, model: nn.Module, *, layer_names: List[str]):
+    def __init__(self, model: nn.Module, *, layer_names: list[str] | None):
         self.model = model
-        self.layer_names = layer_names
+        self.layer_names = layer_names if layer_names is not None else []
         self.hooks = []
         self.features = {}
 
