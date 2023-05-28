@@ -11,11 +11,12 @@ from functools import partial
 from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any
-from dlup._image import Resampling
+
 import numpy as np
 import pytorch_lightning as pl
 import torch.nn.functional as F
 import torch.optim.optimizer
+from dlup._image import Resampling
 from dlup.data.dataset import ConcatDataset
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.trainer.states import TrainerFn
@@ -27,6 +28,7 @@ from ahcore.transforms.augmentations import cast_list_to_tensor
 from ahcore.utils.data import DataDescription, InferenceMetadata
 from ahcore.utils.io import get_logger
 from ahcore.utils.plotting import plot_batch
+from ahcore.utils.model import ExtractFeaturesHook
 
 logger = get_logger(__name__)
 
@@ -77,7 +79,7 @@ class AhCoreLightningModule(pl.LightningModule):
             logger=False, ignore=["model", "augmentations", "metrics", "data_description", "loss", "trackers"]
         )  # TODO: we should send the hyperparams to the logger elsewhere
 
-        self._model = model(num_classes=data_description.num_classes)
+        self._model = model(out_channels=data_description.num_classes)
         self._augmentations = augmentations
 
         self._loss = loss
@@ -175,11 +177,12 @@ class AhCoreLightningModule(pl.LightningModule):
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        if self._model.return_features:
-            _prediction, _features = self._model(_input)
-            batch["features"] = _features
-        else:
+        # Extract features if needed
+        layer_names = [] if stage == TrainerFn.FITTING else []
+        with ExtractFeaturesHook(self._model, layer_names=layer_names):
             _prediction = self._model(_input)
+            _features = self._model.features
+
         batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)
         # The relevant_dict contains values to know where the tiles originate.
