@@ -72,7 +72,7 @@ class UNet(nn.Module):
     Paper authors: Olaf Ronneberger, Philipp Fischer, Thomas Brox
 
     Args:
-        num_classes     : Number of output classes required
+        out_channels     : Number of output classes required
         num_input_ch  : Number of channels in input images (default 3)
         depth      : Number of layers in each side of U-net (default 5)
         num_initial_filters : Number of features in first layer (default 64)
@@ -80,28 +80,25 @@ class UNet(nn.Module):
     """
 
     def __init__(
-            self,
-            num_input_ch: int,
-            num_classes: int,
-            depth: int = 5,
-            num_initial_filters: int = 128,
-            bilinear: bool = False,
-            apply_softmax_out: bool = False,
-            return_features: bool = False,
+        self,
+        num_input_ch: int,
+        out_channels: int,
+        depth: int = 5,
+        num_initial_filters: int = 128,
+        bilinear: bool = False,
+        apply_softmax_out: bool = False,
     ):
-
         # Check wether num_layers is more than zero.
         if depth < 1:
             raise ValueError(f"num_layers = {depth}, expected: num_layers > 0")
 
         super().__init__()
         self.num_layers = depth
-        self.num_classes = num_classes
+        self.out_channels = out_channels
         self.input_channels = num_input_ch
         self.hidden_features = num_initial_filters
         self.bilinear = bilinear
         self.apply_softmax_out = apply_softmax_out
-        self.return_features = return_features
 
         # Create layers of the UNet model.
         self.layers = self.create_unet()
@@ -122,7 +119,7 @@ class UNet(nn.Module):
             feats //= 2
 
         # Define the final classification layer.
-        layers.append(nn.Conv2d(feats, self.num_classes, kernel_size=(1, 1)))
+        layers.append(nn.Conv2d(feats, self.out_channels, kernel_size=(1, 1)))
         return nn.ModuleList(layers)
 
     def forward(self, x) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor]]:
@@ -132,11 +129,11 @@ class UNet(nn.Module):
         xi = [self.layers[0](x)]
 
         # Down path
-        for layer in self.layers[1: self.num_layers]:
+        for layer in self.layers[1 : self.num_layers]:
             xi.append(layer(xi[-1]))
 
         # Up path
-        for i, layer in enumerate(self.layers[self.num_layers: -1]):
+        for i, layer in enumerate(self.layers[self.num_layers : -1]):
             xi[-1] = layer(xi[-1], xi[-2 - i])
 
         # Final classification layer
@@ -146,7 +143,4 @@ class UNet(nn.Module):
         if self.apply_softmax_out:
             output = torch.softmax(output, dim=1)
 
-        # Return features if required.
-        if self.return_features:
-            return output, tuple(xi)
         return output

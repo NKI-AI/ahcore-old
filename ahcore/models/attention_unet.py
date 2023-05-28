@@ -143,12 +143,12 @@ class Decoder(nn.Module):
 class OutputLayer(nn.Module):
     """OutputLayer"""
 
-    def __init__(self, inp_ch: int, num_classes: int):
+    def __init__(self, inp_ch: int, out_channels: int):
         super().__init__()
         layers = [
             nn.Conv2d(
                 in_channels=inp_ch,
-                out_channels=num_classes,
+                out_channels=out_channels,
                 kernel_size=(1, 1),
                 stride=(1, 1),
                 padding=0,
@@ -170,10 +170,8 @@ class AttentionUnet(nn.Module):
         depth: int,
         dropout_rate: float,
         num_classes: int,
-        return_features: bool = False,
     ):
         super().__init__()
-        self.return_features = return_features
         self.encoder = Encoder(inp_channel, kernel_multiplier, dropout_rate, depth=depth)
         self.decoder = Decoder(kernel_multiplier, dropout_rate, num_classes, depth=depth)
 
@@ -189,10 +187,4 @@ class AttentionUnet(nn.Module):
         """
         encoder_features = self.encoder(x)
         segmentation_maps = self.decoder(encoder_features)
-        if self.return_features:
-            deep_features = ()
-            for i in range(self.encoder.depth):
-                deep_features = deep_features + (encoder_features[-i - 1].clone(),)
-            return segmentation_maps, deep_features
-        else:
-            return segmentation_maps
+        return segmentation_maps

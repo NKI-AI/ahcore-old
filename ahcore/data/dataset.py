@@ -38,7 +38,6 @@ class DlupDataModule(pl.LightningDataModule):
         """
         Construct a DataModule based on a manifest.
 
-
         Parameters
         ----------
         data_description : DataDescription

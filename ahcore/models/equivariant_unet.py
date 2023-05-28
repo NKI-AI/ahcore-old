@@ -102,7 +102,7 @@ class E2UNet(nn.Module):
     <https://arxiv.org/abs/1505.04597>`_
     Paper authors: Olaf Ronneberger, Philipp Fischer, Thomas Brox
     Args:
-        num_classes     : Number of output classes required
+        out_channels     : Number of output classes required
         input_channels  : Number of channels in input images (default 3)
         num_layers      : Number of layers in each side of U-net (default 5)
         hidden_features : Number of features in first layer (default 64)
@@ -112,7 +112,7 @@ class E2UNet(nn.Module):
     def __init__(
         self,
         group,
-        num_classes: int,
+        out_channels: int,
         input_channels: int = 3,
         num_layers: int = 5,
         hidden_features: int = 64,
@@ -126,7 +126,7 @@ class E2UNet(nn.Module):
         super().__init__()
         self.group = group
         self.num_layers = num_layers
-        self.num_classes = num_classes
+        self.out_channels = out_channels
         self.input_channels = input_channels
         self.hidden_features = hidden_features
         self.bilinear = bilinear
@@ -161,7 +161,7 @@ class E2UNet(nn.Module):
 
         # Define the final classification layer.
         classify_in_type = enn.FieldType(group, feats * [group.regular_repr])
-        output_type = enn.FieldType(group, self.num_classes * [group.trivial_repr])
+        output_type = enn.FieldType(group, self.out_channels * [group.trivial_repr])
         layers.append(enn.R2Conv(classify_in_type, output_type, kernel_size=1, bias=False))
         return nn.ModuleList(layers)
 
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     # Define the model.
     model = E2UNet(
         group=group,
-        num_classes=3,
+        out_channels=3,
         input_channels=3,
         num_layers=3,
         hidden_features=32,
