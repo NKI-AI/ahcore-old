@@ -1,0 +1,58 @@
+_target_: ahcore.utils.data.DataDescription
+data_dir: ${oc.env:DATA_DIR}
+annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230111 # specify in .env
+manifest_path: ${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230111/manifest.json
+dataset_split_path: ${oc.env:DATASET_SPLIT}/tissue_subtypes/v20230111/train_val_test_split_mc.json
+center_info_path: ${oc.env:DATASET_SPLIT}/tissue_background/v20230125/tissue_source_site_codes.csv
+extract_center: True
+centers: ["Greater Poland Cancer Center", "MSKCC", "Christiana Healthcare", "ILSBio", "Candler", "Indivumed", "Asterand"]
+mask_label: roi
+mask_threshold: 0.1
+roi_name: roi  # This is the name of the label that carries the ROI
+use_roi: True
+# Eg. 512 x 512 is: tile_size 726 x 726 and tile_overlap 107 x 107
+# Tiles are cropped in the transforms downstream, to ensure the patch is completely visible, they are extracted
+# slightly larger (sqrt 2) with sufficient overlap so we have a 512 stride.
+training_grid:
+  mpp: 1.0
+  output_tile_size: [726, 726]
+  tile_overlap: [0, 0]
+  tile_size: [512, 512]
+inference_grid:
+  mpp: 1.0
+  tile_size: [512, 512]
+  tile_overlap: [0, 0]
+
+normalize_mean: [0.485, 0.456, 0.406]
+normalize_std: [0.229, 0.224, 0.225]
+
+num_classes: 4
+use_class_weights: false  # Use the class weights in the loss
+feature_layers:
+  - "model.1.upconv.up.adn.A"
+
+remap_labels:
+  stroma: stroma
+  tumor: tumor
+  inflamed: stroma
+  dcis: tumor
+  lymphoid aggregates: ignore
+  dcis immune cells: stroma
+  necrotic areas: ignore
+  normal glands: stroma
+  blood vessels: stroma
+  fat cell area: ignore
+  red blood cells: stroma
+  fibrosis areas: ignore
+  artefacts: ignore
+  other: ignore
+
+index_map:
+  stroma: 1
+  tumor: 2
+  ignore: 3
+
+colors:
+  stroma: green
+  tumor: red
+  ignore: yellow

@@ -179,10 +179,9 @@ class AhCoreLightningModule(pl.LightningModule):
 
         # Extract features only when not training
         layer_names = [] if stage == TrainerFn.FITTING else self._data_description.feature_layers
-        with ExtractFeaturesHook(self._model, layer_names=layer_names):
+        with ExtractFeaturesHook(self._model, layer_names=layer_names) as hook:
             _prediction = self._model(_input)
-            _features = self._model.features
-            batch["features"] = _features
+            batch["features"] = hook.features
 
         batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)

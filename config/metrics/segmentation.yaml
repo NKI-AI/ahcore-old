@@ -13,7 +13,7 @@ prediction_robustness:
 feature_robustness:
   _target_: ahcore.metrics.epoch_metrics.FeatureAUCRobustness
   target_key: "center"
-  feature_layer: 0
+  feature_layer: "model.1.upconv.up.adn.A" # TODO: Do this elsewhere?
   features_patch_aggregation: "mean"
   features_per_target_aggregation: "mean"
   target_aggregations: ["min", "max", "mean", "std"]
@@ -21,7 +21,7 @@ feature_robustness:
 linear_probing:
   _target_: ahcore.metrics.epoch_metrics.LinearModelFeatureRobustness
   target_key: "center"
-  feature_layer: 0
+  feature_layer: "model.1.upconv.up.adn.A"
   features_patch_aggregation: "mean"
   target_aggregations: [ "min", "max", "mean", "std" ]
   model_name: "LogisticRegression"
