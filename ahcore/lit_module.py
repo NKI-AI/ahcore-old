@@ -177,11 +177,12 @@ class AhCoreLightningModule(pl.LightningModule):
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        # Extract features if needed
-        layer_names = [] if stage == TrainerFn.FITTING else []
+        # Extract features only when not training
+        layer_names = [] if stage == TrainerFn.FITTING else self._data_description.feature_layers
         with ExtractFeaturesHook(self._model, layer_names=layer_names):
             _prediction = self._model(_input)
             _features = self._model.features
+            batch["features"] = _features
 
         batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)

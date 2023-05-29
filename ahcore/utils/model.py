@@ -65,14 +65,20 @@ class ExtractFeaturesHook:
         """
         Registers the hooks when entering the context.
         """
+        if not hasattr(self, "layer_cache"):
+            self.layer_cache = {name: module for name, module in self.model.named_modules()}
+
         for layer_name in self.layer_names:
-            layer = getattr(self.model, layer_name)
-            hook = layer.register_forward_hook(
-                lambda module, input, output, layer_name=layer_name: self.save_output(
-                    layer_name, module, input, output
+            if layer_name in self.layer_cache:
+                module = self.layer_cache[layer_name]
+                hook = module.register_forward_hook(
+                    lambda module, input, output, layer_name=layer_name: self.save_output(
+                        layer_name, module, input, output
+                    )
                 )
-            )
-            self.hooks.append(hook)
+                self.hooks.append(hook)
+            else:
+                raise ValueError(f"No layer named {layer_name} in model")
         return self
 
     def __exit__(
