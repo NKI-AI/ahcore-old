@@ -27,8 +27,8 @@ from torch.utils.tensorboard import SummaryWriter
 from ahcore.transforms.augmentations import cast_list_to_tensor
 from ahcore.utils.data import DataDescription, InferenceMetadata
 from ahcore.utils.io import get_logger
-from ahcore.utils.plotting import plot_batch
 from ahcore.utils.model import ExtractFeaturesHook
+from ahcore.utils.plotting import plot_batch
 
 logger = get_logger(__name__)
 
@@ -181,7 +181,8 @@ class AhCoreLightningModule(pl.LightningModule):
         layer_names = [] if stage == TrainerFn.FITTING else self._data_description.feature_layers
         with ExtractFeaturesHook(self._model, layer_names=layer_names) as hook:
             _prediction = self._model(_input)
-            batch["features"] = hook.features
+            if layer_names is not []:  # Only add the features if they are requested
+                batch["features"] = hook.features
 
         batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)

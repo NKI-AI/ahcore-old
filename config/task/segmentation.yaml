@@ -6,4 +6,4 @@ defaults:
   - override /losses: segmentation_ce.yaml
   # TODO: we could also consider specifying the lit_module here
 
-task_name: "segmentation"
+task_name: ??

@@ -1,7 +1,9 @@
 # encoding: utf-8
 from __future__ import annotations
-from typing import Any, Optional, Type
+
 from pprint import pformat
+from typing import Any, Optional, Type
+
 import torch
 import torch.nn as nn
 
@@ -78,8 +80,10 @@ class ExtractFeaturesHook:
                 )
                 self.hooks.append(hook)
             else:
-                raise ValueError(f"No layer named {layer_name} in model. "
-                                 f"These are the available ones: {pformat(self.layer_cache)}.")
+                raise ValueError(
+                    f"No layer named {layer_name} in model. "
+                    f"These are the available ones: {pformat(self.layer_cache)}."
+                )
         return self
 
     def __exit__(

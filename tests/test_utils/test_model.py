@@ -2,6 +2,7 @@
 import pytest
 import torch
 import torch.nn as nn
+
 from ahcore.utils.model import ExtractFeaturesHook
 
 

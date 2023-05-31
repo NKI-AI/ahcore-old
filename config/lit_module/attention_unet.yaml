@@ -7,7 +7,6 @@ model:
   kernel_multiplier: 7
   depth: 4
   dropout_rate: 0.1
-  return_features: True
 
 optimizer:
   _target_: torch.optim.Adam

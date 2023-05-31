@@ -6,7 +6,6 @@ model:
   num_input_ch: 3
   depth: 4
   num_initial_filters: 10
-  return_features: True
 #  dropout_prob: 0.1
 
 optimizer:

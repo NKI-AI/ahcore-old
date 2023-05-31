@@ -1,6 +1,5 @@
-_target_: ahcore.transforms.augmentations.AugmentationFactory
-
 # These transforms will be applied in order as a first step.
+_target_: ahcore.transforms.augmentations.AugmentationFactory
 
 initial_transforms:
   - _target_: ahcore.transforms.image_normalization.MacenkoNormalizer

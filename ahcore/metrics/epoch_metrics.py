@@ -4,11 +4,11 @@ from typing import List
 import numpy as np
 import torch
 import torchmetrics
+from torchmetrics.functional.classification import binary_auroc
 
 from ahcore.metrics.auc import robustness_auc  # noqa
 from ahcore.metrics.linear_probing import LinearProbing
 from ahcore.utils.data import DataDescription
-from torchmetrics.functional.classification import binary_auroc
 
 _TORCH: str = "torch"
 _NUMPY: str = "numpy"
@@ -92,11 +92,11 @@ class PredictionAUCRobustness(PerTargetMetric):
     """
 
     def __init__(
-            self,
-            target_key: str = "center",
-            predictions_aggregation: str = "mean",
-            target_aggregations: List[str] = ["min", "max", "mean", "std"],
-            data_description: DataDescription = None,
+        self,
+        target_key: str = "center",
+        predictions_aggregation: str = "mean",
+        target_aggregations: List[str] = ["min", "max", "mean", "std"],
+        data_description: DataDescription = None,
     ):
         super().__init__(target_key=target_key, target_aggregations=target_aggregations)
         self.predictions_aggregation = predictions_aggregation
@@ -153,13 +153,13 @@ class FeatureAUCRobustness(PerTargetMetric):
     """
 
     def __init__(
-            self,
-            target_key: str = "center",
-            feature_layer: int = 0,
-            features_patch_aggregation: str = "mean",
-            features_per_target_aggregation: str = "mean",
-            target_aggregations: List[str] = ["min", "max", "mean", "std"],
-            data_description: DataDescription = None,
+        self,
+        target_key: str = "center",
+        feature_layer: int = 0,
+        features_patch_aggregation: str = "mean",
+        features_per_target_aggregation: str = "mean",
+        target_aggregations: List[str] = ["min", "max", "mean", "std"],
+        data_description: DataDescription = None,
     ):
         super().__init__(target_key=target_key, target_aggregations=target_aggregations)
         self.feature_layer = feature_layer
@@ -221,16 +221,16 @@ class LinearModelFeatureRobustness(PerTargetMetric):
     """
 
     def __init__(
-            self,
-            target_key: str = "center",
-            feature_layer: int = 0,
-            features_patch_aggregation: str = "mean",
-            target_aggregations: List[str] = ["min", "max", "mean", "std"],
-            model_name: str = "LogisticRegression",
-            test_size: float = 0.3,
-            scoring: str = "accuracy",
-            data_description: DataDescription = None,
-            **kwargs,
+        self,
+        target_key: str = "center",
+        feature_layer: int = 0,
+        features_patch_aggregation: str = "mean",
+        target_aggregations: List[str] = ["min", "max", "mean", "std"],
+        model_name: str = "LogisticRegression",
+        test_size: float = 0.3,
+        scoring: str = "accuracy",
+        data_description: DataDescription = None,
+        **kwargs,
     ):
         super().__init__(target_key=target_key, target_aggregations=target_aggregations)
         self.feature_layer = feature_layer

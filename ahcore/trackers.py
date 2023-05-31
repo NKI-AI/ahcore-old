@@ -13,11 +13,12 @@ from typing import Any, Union
 
 import h5py
 import torch
+from dlup._image import Resampling
 from dlup.writers import TiffCompression, TifffileImageWriter
 from torch import Tensor
 
 from ahcore.utils.io import get_logger
-from dlup._image import Resampling
+
 logger = get_logger(__name__)
 
 

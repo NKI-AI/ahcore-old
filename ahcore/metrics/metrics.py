@@ -12,6 +12,7 @@ import torch.nn.functional as F  # noqa
 from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 
+
 class AhCoreMetric:
     def __init__(self, data_description: DataDescription) -> None:
         """Initialize the metric class"""
@@ -197,8 +198,10 @@ class WSIDiceMetric(WSIMetric):
         dict
             Dictionary with the overall dice scores across wsis per class
         """
-        overall_dices = {class_idx: {"total_intersection": 0, "total_cardinality": 0, "overall_dice": 0} for
-                          class_idx in range(self._num_classes)}
+        overall_dices = {
+            class_idx: {"total_intersection": 0, "total_cardinality": 0, "overall_dice": 0}
+            for class_idx in range(self._num_classes)
+        }
         total_true_positives = 0
         total_cardinality = 0
         for wsi_name in self.wsis:
@@ -208,8 +211,9 @@ class WSIDiceMetric(WSIMetric):
                 overall_dices[class_idx]["total_intersection"] += total_true_positives
                 overall_dices[class_idx]["total_cardinality"] += total_cardinality
         for class_idx in overall_dices.keys():
-            overall_dices[class_idx]["overall_dice"] = (2 * overall_dices[class_idx]["total_intersection"]) / \
-                                                               overall_dices[class_idx]["total_cardinality"]
+            overall_dices[class_idx]["overall_dice"] = (
+                2 * overall_dices[class_idx]["total_intersection"]
+            ) / overall_dices[class_idx]["total_cardinality"]
         return {class_idx: overall_dices[class_idx]["overall_dice"] for class_idx in overall_dices.keys()}
 
     def _get_dice_averaged_over_total_wsis(self):
@@ -238,9 +242,7 @@ class WSIDiceMetric(WSIMetric):
             dices = self._get_overall_dice()
         else:
             dices = self._get_dice_averaged_over_total_wsis()
-        avg_dict = {
-            f"{self.name}/{self._label_to_class[idx]}": value for idx, value in dices.items()
-        }
+        avg_dict = {f"{self.name}/{self._label_to_class[idx]}": value for idx, value in dices.items()}
         return avg_dict
 
     def reset(self):
