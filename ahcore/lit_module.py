@@ -26,7 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from ahcore.transforms.augmentations import cast_list_to_tensor
 from ahcore.utils.data import DataDescription, InferenceMetadata
-from ahcore.utils.io import get_logger
+from ahcore.utils.io import get_cache_dir, get_logger
 from ahcore.utils.model import ExtractFeaturesHook
 from ahcore.utils.plotting import plot_batch
 
@@ -46,7 +46,7 @@ DIFFERENCE_COLORS = {
 _LOOP_DONE = "LOOP_DONE"
 _WSI_PROCESSING = "PROCESSING_WSI"
 _WSI_DONE = "WSI_DONE"
-_TIFF_SAVE_PATH = Path(os.environ.get("SCRATCH", "/tmp")) / Path("tiffs")
+_TIFF_SAVE_PATH = get_cache_dir() / "tiffs"
 
 
 class AhCoreLightningModule(pl.LightningModule):
@@ -120,6 +120,14 @@ class AhCoreLightningModule(pl.LightningModule):
         """This function is only used during inference"""
         self._model.eval()
         return self._model.forward(sample)
+
+    @property
+    def data_description(self) -> DataDescription:
+        return self._data_description
+
+    @property
+    def validation_dataset(self) -> ConcatDataset:
+        return self._validation_dataset
 
     @property
     def _tensorboard(self) -> SummaryWriter | None:
@@ -270,6 +278,12 @@ class AhCoreLightningModule(pl.LightningModule):
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.VALIDATING)
+
+        # This is a sanity check. We expect the filenames to be constant across the batch.
+        filename = batch["path"][0]
+        if any([filename != f for f in batch["path"]]):
+            raise ValueError("Filenames are not constant across the batch.")
+
         if self.current_epoch == 0 and batch_idx == 0:
             self.log_images(batch["image"], target=batch["target"], step=self.global_step, name="val/images/batch_0")
         return output
@@ -341,6 +355,13 @@ class AhCoreLightningModule(pl.LightningModule):
         self._set_val_loop_dataset()
         self._start_new_process()
 
+    def _set_val_loop_dataset(self) -> None:
+        """Fixes a reference to the validation ConcatDataset that is used in the current val loop.
+
+        To be called at the beginning of each validation run.
+        """
+        self._validation_dataset = self.trainer.datamodule.val_concat_dataset
+
     def _start_new_process(self) -> None:
         """Starts a new child process and adds it to the self._tiles_process"""
         self._tiles_process = Process(target=_write_predictions_from_queue, args=(self._predictions_queue,))
@@ -364,37 +385,35 @@ class AhCoreLightningModule(pl.LightningModule):
             save_name = _TIFF_SAVE_PATH / f"step_{self.global_step}" / Path(str(filename) + ".tiff")
             os.makedirs(save_name.parent, exist_ok=True)
             # create a new tiff writer for this WSI
-            _tiff_writer = TifffileImageWriter(
-                filename=str(save_name),
-                size=size,
-                mpp=self._data_description.inference_grid.mpp,
-                tile_size=self._data_description.inference_grid.tile_size,
-                pyramid=True,
-                compression=TiffCompression("jpeg"),
-                quality=100,
-                interpolator=Resampling.NEAREST,
-            )
+            # _tiff_writer = TifffileImageWriter(
+            #     filename=str(save_name),
+            #     size=size,
+            #     mpp=self._data_description.inference_grid.mpp,
+            #     tile_size=self._data_description.inference_grid.tile_size,
+            #     pyramid=True,
+            #     compression=TiffCompression("jpeg"),
+            #     quality=100,
+            #     interpolator=Resampling.NEAREST,
+            # )
             self._new_val_wsi = False
-            self._predictions_queue.put(
-                [{"num_grid_tiles": batch["num_grid_tiles"]}, status, _tiff_writer]
-            )  # mark the start of a new WSI
-            self._predictions_queue.put([batch, status, None])  # add the first batch
+            # self._predictions_queue.put(
+            #     [{"num_grid_tiles": batch["num_grid_tiles"]}, status, _tiff_writer]
+            # )  # mark the start of a new WSI
+            # self._predictions_queue.put([batch, status, None])  # add the first batch
         elif filename != self._last_val_wsi_filename:  # done with a WSI
             self._written_val_tiffs += 1
             self._new_val_wsi = True
             self._last_val_wsi_filename = filename
-            self._predictions_queue.put([{"tile_shape": self._tile_shape}, _WSI_DONE, None])  # mark the end of a WSI
-            self._enqueue_prediction(batch, filename)  # enqueue the prediction for the new WSI
+            # self._predictions_queue.put([{"tile_shape": self._tile_shape}, _WSI_DONE, None])  # mark the end of a WSI
+            # self._enqueue_prediction(batch, filename)  # enqueue the prediction for the new WSI
         else:  # still processing the same WSI
             status = _WSI_PROCESSING
-            self._predictions_queue.put([batch, status, _tiff_writer])
+            # self._predictions_queue.put([batch, status, _tiff_writer])
 
-    def _set_val_loop_dataset(self) -> None:
-        """Fixes a reference to the validation ConcatDataset that is used in the current val loop.
-
-        To be called at the beginning of each validation run.
-        """
-        self._validation_dataset = self.trainer.datamodule.val_concat_dataset
+    @property
+    def validation_dataset(self) -> ConcatDataset:
+        """Returns the validation ConcatDataset that is used in the current val loop."""
+        return self.trainer.datamodule.val_concat_dataset
 
     def _get_current_val_wsi_filename(self) -> Path:
         """Retrieves the filename of the WSI that is currently processed in the validation loop"""
@@ -411,9 +430,10 @@ class AhCoreLightningModule(pl.LightningModule):
         size = batch_dataset.slide_image.get_scaled_size(scaling)
         return size
 
+    # TODO: Interesting apporach.
     def _get_current_val_dataset(self, return_num_tiles: bool = False):
         """Retrieves the validation dataset that is processed at the current step in the val loop"""
-        concat_dataset = self._validation_dataset
+        concat_dataset = self.validation_dataset
         curr_val_dataset = concat_dataset.index_to_dataset(self._validation_index)
         self._tile_shape = curr_val_dataset[0].grids[0][1]
         if return_num_tiles:

@@ -9,7 +9,9 @@ This template is licensed under the MIT License.
 from __future__ import annotations
 
 import logging
+import os
 import warnings
+from pathlib import Path
 from typing import Any, Sequence
 
 import pytorch_lightning as pl
@@ -193,3 +195,7 @@ def fullname(cls: Any) -> str:
     if module is None or module == str.__class__.__module__:  # don't want to return 'builtins'
         return cls.__name__
     return module + "." + cls.__name__
+
+
+def get_cache_dir() -> Path:
+    return Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache"

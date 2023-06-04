@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Sampler
 
 import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
-from ahcore.utils.io import get_logger
+from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
 
 logger = get_logger(__name__)
@@ -163,7 +163,6 @@ class DlupDataModule(pl.LightningDataModule):
 
         else:
             batch_sampler = ahcore.data.samplers.WsiBatchSampler(
-                sampler=torch.utils.data.SequentialSampler(data_source=dataset),
                 dataset=dataset,
                 batch_size=batch_size,
             )
@@ -177,8 +176,8 @@ class DlupDataModule(pl.LightningDataModule):
         )
 
     def _load_from_cache(self, func: Callable, stage, *args, **kwargs):
-        name = func.__qualname__.split("<locals>.")[-1]
-        path = Path(os.environ.get("SCRATCH", "/tmp")) / "ahcore_cache" / str(stage.value) / name
+        name = fullname(func)
+        path = get_cache_dir() / str(stage.value) / name
         filename = path / f"{self.uuid}.pkl"
         if not filename.is_file():
             path.mkdir(exist_ok=True, parents=True)

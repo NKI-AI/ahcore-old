@@ -1,0 +1,2 @@
+write_h5_callback:
+  _target_: ahcore.callbacks.WriteH5Callback
