@@ -24,12 +24,15 @@ class _WriterMessage(TypedDict):
 class WriteH5Callback(Callback):
     def __init__(self, max_queue_size: int, max_concurrent_writers: int):
         super().__init__()
-        self._queue = queue.Queue()
         self._writers: dict[str, _WriterMessage] = {}
         self._current_filename = None
         self._max_queue_size = max_queue_size
         self._semaphore = Semaphore(max_concurrent_writers)
         self._validation_index = 0
+
+    @property
+    def writers(self):
+        return self._writers
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         filename = batch["path"][0]  # Filenames are constant across the batch.
@@ -43,12 +46,12 @@ class WriteH5Callback(Callback):
             # TODO: This filename might contain 'global_step', or only give the last one depending on settings
             # TODO: These files can be very large
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
-            output_filename = self._create_output_filename(filename, step=str(pl_module.global_step))
+            output_filename = self._create_output_filename(filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
 
             logger.info("Got new filename in WriteH5Callback %s. Will write to %s", filename, output_filename)
             if self._current_filename is not None:
-                self._queue.put(None)
+                self._writers[self._current_filename]["queue"].put(None)  # Add None to writer's queue
                 self._writers[self._current_filename]["thread"].join()
                 self._semaphore.release()
 
@@ -77,7 +80,7 @@ class WriteH5Callback(Callback):
                 tile_size=tile_size,
                 tile_overlap=tile_overlap,
                 num_samples=num_samples,
-                progress=tqdm,
+                progress=None,
             )
             new_thread = threading.Thread(target=new_writer.consume, args=(self.generator(new_queue),))
             new_thread.start()
@@ -94,7 +97,7 @@ class WriteH5Callback(Callback):
 
     def on_validation_end(self, trainer, pl_module):
         if self._current_filename is not None:
-            self._queue.put(None)
+            self._writers[self._current_filename]["queue"].put(None)
             self._writers[self._current_filename]["thread"].join()
             self._semaphore.release()
             self._validation_index = 0
@@ -103,11 +106,13 @@ class WriteH5Callback(Callback):
         while True:
             tile = queue.get()
             if tile is None:
+                logger.info("Got None from queue")
+
                 break
             yield tile
 
     @staticmethod
-    def _create_output_filename(input_path: Path, step: None | str = None) -> Path:
+    def _create_output_filename(input_path: Path, step: None | int | str = None) -> Path:
         # Get the absolute path of the file
         input_path = Path(input_path).resolve()
 
@@ -119,3 +124,47 @@ class WriteH5Callback(Callback):
         if step:
             return get_cache_dir() / "h5s" / f"step_{step}" / f"{hex_dig}.h5"
         return get_cache_dir() / "h5s" / f"{hex_dig}.h5"
+
+
+class ComputeWsiMetricsCallback(Callback):
+    def __init__(self, reader=None):
+        self._reader = reader
+        self._metrics = None
+        self.metrics_thread = None
+
+    @property
+    def metrics(self):
+        return self._metrics
+
+    def on_validation_start(self, trainer, pl_module):
+        # Start the metrics computation in a separate thread
+        # self.metrics_thread = threading.Thread(target=self.compute_metrics)
+        # self.metrics_thread.start()
+        pass
+
+    def on_validation_end(self, trainer, pl_module):
+        # Ensure that all h5 files have been written
+        # for writer in trainer.callbacks[WriteH5Callback].writers.values():
+        #     writer["thread"].join()
+        #
+        self._metrics = self.compute_metrics()
+
+    # def on_validation_end(self, trainer, pl_module):
+    #     # Ensure that all h5 files have been written
+    #     for writer in trainer.callbacks[WriteH5Callback]._writers.values():
+    #         writer['thread'].join()
+    #
+    #     # Wait for the metrics computation to finish
+    #     self.metrics_thread.join()
+    #
+    #     pl_module.log('custom_metric', self.metrics)
+
+
+    def compute_metrics(self):
+        pass # use h5_reader here.
+
+    class ComputeMetricsCallback(Callback):
+        def __init__(self, h5_reader):
+            self.h5_reader = h5_reader
+            self.metrics = None
+            self.metrics_thread = None

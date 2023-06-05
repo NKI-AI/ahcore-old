@@ -10,7 +10,9 @@ import PIL.Image
 from dlup.data.dataset import TiledROIsSlideImageDataset
 from dlup.tiling import TilingMode
 from dlup.writers import Resampling, TifffileImageWriter
+from ahcore.utils.io import get_logger
 
+logger = get_logger(__name__)
 
 class StitchingMode(Enum):
     CROP = 0
@@ -87,11 +89,14 @@ class H5FileImageWriter:
         self._image_dataset: Optional[h5py.Dataset] = None
         self._current_index: int = 0
 
+        logger.info("Writing h5 to %s", self._filename)
+
     def init_writer(self, first_tile: np.ndarray, h5file: h5py.File) -> None:
         """Initializes the image_dataset based on the first tile."""
         sample_shape = np.asarray(first_tile).shape
         image_dtype = np.asarray(first_tile).dtype
 
+        self._current_index = 0
         self._image_dataset = h5file.create_dataset(
             "data",
             shape=(self._num_samples,) + sample_shape,
@@ -103,34 +108,42 @@ class H5FileImageWriter:
         metadata = {
             "mpp": self._mpp,
             "dtype": str(image_dtype),
-            "sample_shape": sample_shape,
+            "sample_shape": tuple(sample_shape),
             "num_samples": self._num_samples,
-            "tile_size": self._tile_size,
-            "tile_overlap": self._tile_overlap,
+            "tile_size": tuple(self._tile_size),
+            "tile_overlap": tuple(self._tile_overlap),
         }
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
     def consume(self, tile_generator: Generator[np.ndarray, None, None]) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
-        with h5py.File(self._filename, "w") as h5file:
-            first_tile = next(tile_generator)
-            self.init_writer(first_tile, h5file)
+        try:
+            with h5py.File(self._filename, "w") as h5file:
+                first_tile = next(tile_generator)
+                self.init_writer(first_tile, h5file)
 
-            tile_generator = self._tile_generator(first_tile, tile_generator)
+                tile_generator = self._tile_generator(first_tile, tile_generator)
 
-            # tqdm progress bar will be used if self._progress is not None
-            if self._progress:
-                tile_generator = self._progress(tile_generator, total=self._num_samples)
+                # progress bar will be used if self._progress is not None
+                if self._progress:
+                    tile_generator = self._progress(tile_generator, total=self._num_samples)
 
-            for tile in tile_generator:
-                self._image_dataset[self._current_index] = tile
-                self._current_index += 1
+                for tile in tile_generator:
+                    self._image_dataset[self._current_index] = tile
+                    self._current_index += 1
+                logger.info("Done writing tiles for %s", self._filename)
+
+        except Exception as e:
+            logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
 
     @staticmethod
     def _tile_generator(first_tile, tile_generator):
         yield first_tile
-        yield from tile_generator
+        for tile in tile_generator:
+            if tile is None:
+                break
+            yield tile
 
 
 class H5FileImageReader:

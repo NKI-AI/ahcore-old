@@ -1,0 +1,2 @@
+compute_wsi_metrics_callback:
+  _target_: ahcore.callbacks.ComputeWsiMetricsCallback
