@@ -15,7 +15,7 @@ from ahcore.writers import H5FileImageWriter
 logger = get_logger(__name__)
 
 
-class _Message(TypedDict):
+class _WriterMessage(TypedDict):
     queue: queue.Queue
     writer: H5FileImageWriter
     thread: threading.Thread
@@ -25,7 +25,7 @@ class WriteH5Callback(Callback):
     def __init__(self, max_queue_size: int, max_concurrent_writers: int):
         super().__init__()
         self._queue = queue.Queue()
-        self._writers: dict[str, _Message] = {}
+        self._writers: dict[str, _WriterMessage] = {}
         self._current_filename = None
         self._max_queue_size = max_queue_size
         self._semaphore = Semaphore(max_concurrent_writers)
@@ -54,7 +54,7 @@ class WriteH5Callback(Callback):
 
             self._semaphore.acquire()
 
-            current_dataset, _ = pl_module.validation_dataset.index_to_dataset(batch_idx)
+            current_dataset, _ = pl_module.validation_dataset.index_to_dataset(self._validation_index)
             slide_image = current_dataset.slide_image
             # We need a sanity check for now
             # TODO: Remove when all works
@@ -85,18 +85,19 @@ class WriteH5Callback(Callback):
             self._current_filename = filename
 
         prediction = batch["prediction"].detach().cpu().numpy()
-
+        batch_size = prediction.shape[0]
         # TODO: Just put the whole batch in instead of single tile
         for tile in prediction:
             self._writers[filename]["queue"].put(tile)
 
-        self._validation_index += prediction.shape[0] * batch_idx
+        self._validation_index += batch_size
 
     def on_validation_end(self, trainer, pl_module):
         if self._current_filename is not None:
             self._queue.put(None)
             self._writers[self._current_filename]["thread"].join()
             self._semaphore.release()
+            self._validation_index = 0
 
     def generator(self, queue: queue.Queue):
         while True:
