@@ -4,16 +4,13 @@
 from __future__ import annotations
 
 import math
-
-import torch
-import torch.utils.data
-from dlup.data.dataset import ConcatDataset
-
-from ahcore.utils.io import get_logger
-import math
 from typing import List
 
+from dlup.data.dataset import ConcatDataset
 from torch.utils.data import ConcatDataset, Sampler
+
+from ahcore.utils.io import get_logger
+
 logger = get_logger()
 
 

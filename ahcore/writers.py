@@ -3,6 +3,7 @@ import json
 import math
 from enum import Enum
 from pathlib import Path
+from typing import Any, Generator, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -10,9 +11,11 @@ import PIL.Image
 from dlup.data.dataset import TiledROIsSlideImageDataset
 from dlup.tiling import TilingMode
 from dlup.writers import Resampling, TifffileImageWriter
+
 from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
+
 
 class StitchingMode(Enum):
     CROP = 0
@@ -59,13 +62,6 @@ def paste_region(array, region, location, paste_mode=PasteMode.OVERWRITE):
         raise ValueError("Unsupported paste mode")
 
 
-import json
-from typing import Any, Generator, Optional, Tuple
-
-import h5py
-import numpy as np
-
-
 class H5FileImageWriter:
     """Image writer that writes tile-by-tile to h5."""
 
@@ -87,28 +83,37 @@ class H5FileImageWriter:
         self._num_samples: int = num_samples
         self._progress = progress
         self._image_dataset: Optional[h5py.Dataset] = None
+        self._coordinates_dataset: Optional[h5py.Dataset] = None
         self._current_index: int = 0
 
         logger.info("Writing h5 to %s", self._filename)
 
-    def init_writer(self, first_tile: np.ndarray, h5file: h5py.File) -> None:
+    def init_writer(self, first_batch: np.ndarray, h5file: h5py.File) -> None:
         """Initializes the image_dataset based on the first tile."""
-        sample_shape = np.asarray(first_tile).shape
-        image_dtype = np.asarray(first_tile).dtype
+        batch_shape = np.asarray(first_batch).shape
+        batch_dtype = np.asarray(first_batch).dtype
 
         self._current_index = 0
+
+        self._coordinates_dataset = h5file.create_dataset(
+            "coordinates",
+            shape=(self._num_samples, 2),
+            dtype=int,
+            compression="gzip",
+        )
+
         self._image_dataset = h5file.create_dataset(
             "data",
-            shape=(self._num_samples,) + sample_shape,
-            dtype=image_dtype,
+            shape=(self._num_samples,) + batch_shape[1:],
+            dtype=batch_dtype,
             compression="gzip",
-            chunks=(1,) + sample_shape,
+            chunks=(1,) + batch_shape[1:],
         )
 
         metadata = {
             "mpp": self._mpp,
-            "dtype": str(image_dtype),
-            "sample_shape": tuple(sample_shape),
+            "dtype": str(batch_dtype),
+            "sample_shape": tuple(batch_shape),
             "num_samples": self._num_samples,
             "tile_size": tuple(self._tile_size),
             "tile_overlap": tuple(self._tile_overlap),
@@ -116,31 +121,40 @@ class H5FileImageWriter:
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
-    def consume(self, tile_generator: Generator[np.ndarray, None, None]) -> None:
+    def consume(self, batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None]) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
         try:
-            with h5py.File(self._filename, "w") as h5file:
-                first_tile = next(tile_generator)
-                self.init_writer(first_tile, h5file)
+            with h5py.File(self._filename.with_suffix(".h5.partial"), "w") as h5file:
+                first_coordinates, first_batch = next(batch_generator)
+                self.init_writer(first_batch, h5file)
 
-                tile_generator = self._tile_generator(first_tile, tile_generator)
+                batch_generator = self._batch_generator((first_coordinates, first_batch), batch_generator)
 
                 # progress bar will be used if self._progress is not None
                 if self._progress:
-                    tile_generator = self._progress(tile_generator, total=self._num_samples)
+                    batch_generator = self._progress(batch_generator, total=self._num_samples)
 
-                for tile in tile_generator:
-                    self._image_dataset[self._current_index] = tile
-                    self._current_index += 1
+                for coordinates, batch in batch_generator:
+                    batch_size = batch.shape[0]
+                    self._image_dataset[self._current_index : self._current_index + batch_size] = batch
+                    # TODO: Maybe make an additional array that maps 'actual index' to a tile
+                    # E.g.: 1, 7, 9, 11 which is the index of the underlying grid. Or a dense tensor with
+                    # True, True, True, False, when a tile is missing.
+                    self._coordinates_dataset[self._current_index : self._current_index + batch_size] = coordinates
+                    self._current_index += batch_size
+
                 logger.info("Done writing tiles for %s", self._filename)
 
         except Exception as e:
             logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
 
+        # When done writing rename the file.
+        self._filename.with_suffix(".h5.partial").rename(self._filename)
+
     @staticmethod
-    def _tile_generator(first_tile, tile_generator):
-        yield first_tile
-        for tile in tile_generator:
+    def _batch_generator(first_coordinates_batch, batch_generator):
+        yield first_coordinates_batch
+        for tile in batch_generator:
             if tile is None:
                 break
             yield tile

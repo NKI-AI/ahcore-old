@@ -6,8 +6,8 @@ from pathlib import Path
 from threading import Semaphore
 from typing import TypedDict
 
+import torch
 from pytorch_lightning.callbacks import Callback
-from tqdm import tqdm
 
 from ahcore.utils.io import get_cache_dir, get_logger
 from ahcore.writers import H5FileImageWriter
@@ -88,12 +88,10 @@ class WriteH5Callback(Callback):
             self._current_filename = filename
 
         prediction = batch["prediction"].detach().cpu().numpy()
-        batch_size = prediction.shape[0]
-        # TODO: Just put the whole batch in instead of single tile
-        for tile in prediction:
-            self._writers[filename]["queue"].put(tile)
-
-        self._validation_index += batch_size
+        coordinates_x, coordinates_y = batch["coordinates"]
+        coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
+        self._writers[filename]["queue"].put((coordinates, prediction))
+        self._validation_index += prediction.shape[0]
 
     def on_validation_end(self, trainer, pl_module):
         if self._current_filename is not None:
@@ -104,12 +102,10 @@ class WriteH5Callback(Callback):
 
     def generator(self, queue: queue.Queue):
         while True:
-            tile = queue.get()
-            if tile is None:
-                logger.info("Got None from queue")
-
+            batch = queue.get()
+            if batch is None:
                 break
-            yield tile
+            yield batch
 
     @staticmethod
     def _create_output_filename(input_path: Path, step: None | int | str = None) -> Path:
@@ -159,9 +155,8 @@ class ComputeWsiMetricsCallback(Callback):
     #
     #     pl_module.log('custom_metric', self.metrics)
 
-
     def compute_metrics(self):
-        pass # use h5_reader here.
+        pass  # use h5_reader here.
 
     class ComputeMetricsCallback(Callback):
         def __init__(self, h5_reader):
