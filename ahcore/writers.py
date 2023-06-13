@@ -119,7 +119,7 @@ class H5FileImageWriter:
 
         self._tile_indices = h5file.create_dataset(
             "tile_indices",
-            shape=(len(self._grid), 1),
+            shape=(len(self._grid),),
             dtype=int,
             compression="gzip",
         )
@@ -168,7 +168,7 @@ class H5FileImageWriter:
                     # Note that this assumes that the coordinates come in C-order, so we will always hit it
                     for idx, curr_coordinates in enumerate(coordinates):
                         # As long as our current coordinates are not equal to the grid coordinates, we make a step
-                        while np.all(curr_coordinates != self._grid[grid_counter]):
+                        while not np.all(curr_coordinates == self._grid[grid_counter]):
                             grid_counter += 1
                         # If we find it, we set it to the index, so we can find it later on
                         # This can be tested by comparing the grid evaluated at a grid index with the tile index
