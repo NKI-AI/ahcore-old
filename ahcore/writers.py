@@ -1,10 +1,11 @@
 # encoding: utf-8
 import json
 import math
+import numpy.typing as npt
 from enum import Enum
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple, Union
-
+from dlup.tiling import Grid, GridOrder, TilingMode
 import h5py
 import numpy as np
 import PIL.Image
@@ -75,6 +76,8 @@ class H5FileImageWriter:
         num_samples: int,
         progress: Any | None = None,
     ) -> None:
+        self._grid: Optional[Grid] = None
+        self._grid_coordinates: Optional[npt.NDArray] = None
         self._filename: Path = filename
         self._size: tuple[int, int] = size
         self._mpp: float = mpp
@@ -84,6 +87,7 @@ class H5FileImageWriter:
         self._progress = progress
         self._image_dataset: Optional[h5py.Dataset] = None
         self._coordinates_dataset: Optional[h5py.Dataset] = None
+        self._tile_indices: Optional[h5py.Dataset] = None
         self._current_index: int = 0
 
         logger.info("Writing h5 to %s", self._filename)
@@ -102,6 +106,26 @@ class H5FileImageWriter:
             compression="gzip",
         )
 
+        # TODO: We only support a single Grid
+        # And GridOrder C
+        self._grid = Grid.from_tiling(
+            (0, 0),
+            size=self._size,
+            tile_size=self._tile_size,
+            tile_overlap=self._tile_overlap,
+            mode=TilingMode.overflow,
+            order=GridOrder.C,
+        )
+
+        self._tile_indices = h5file.create_dataset(
+            "tile_indices",
+            shape=(len(self._grid), 1),
+            dtype=int,
+            compression="gzip",
+        )
+        # Initialize to -1, which is the default value
+        self._tile_indices[:] = -1
+
         self._image_dataset = h5file.create_dataset(
             "data",
             shape=(self._num_samples,) + batch_shape[1:],
@@ -110,36 +134,50 @@ class H5FileImageWriter:
             chunks=(1,) + batch_shape[1:],
         )
 
+        # This only works when the mode is 'overflow' and in 'C' order.
         metadata = {
             "mpp": self._mpp,
             "dtype": str(batch_dtype),
-            "sample_shape": tuple(batch_shape),
+            "shape": tuple(batch_shape),
+            "size": (int(self._size[0]), int(self._size[1])),
             "num_samples": self._num_samples,
             "tile_size": tuple(self._tile_size),
             "tile_overlap": tuple(self._tile_overlap),
+            "num_tiles": len(self._grid),
+            "grid_order": "C",
+            "mode": "overflow",
         }
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
     def consume(self, batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None]) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
+        grid_counter = 0
         try:
             with h5py.File(self._filename.with_suffix(".h5.partial"), "w") as h5file:
                 first_coordinates, first_batch = next(batch_generator)
                 self.init_writer(first_batch, h5file)
 
                 batch_generator = self._batch_generator((first_coordinates, first_batch), batch_generator)
-
                 # progress bar will be used if self._progress is not None
                 if self._progress:
                     batch_generator = self._progress(batch_generator, total=self._num_samples)
 
                 for coordinates, batch in batch_generator:
+                    # We take a coordinate, and step through the grid until we find it.
+                    # Note that this assumes that the coordinates come in C-order, so we will always hit it
+                    for idx, curr_coordinates in enumerate(coordinates):
+                        # As long as our current coordinates are not equal to the grid coordinates, we make a step
+                        while np.all(curr_coordinates != self._grid[grid_counter]):
+                            grid_counter += 1
+                        # If we find it, we set it to the index, so we can find it later on
+                        # This can be tested by comparing the grid evaluated at a grid index with the tile index
+                        # mapped to its coordinates
+                        self._tile_indices[grid_counter] = self._current_index + idx
+                        grid_counter += 1
+
                     batch_size = batch.shape[0]
                     self._image_dataset[self._current_index : self._current_index + batch_size] = batch
-                    # TODO: Maybe make an additional array that maps 'actual index' to a tile
-                    # E.g.: 1, 7, 9, 11 which is the index of the underlying grid. Or a dense tensor with
-                    # True, True, True, False, when a tile is missing.
                     self._coordinates_dataset[self._current_index : self._current_index + batch_size] = coordinates
                     self._current_index += batch_size
 
@@ -153,6 +191,7 @@ class H5FileImageWriter:
 
     @staticmethod
     def _batch_generator(first_coordinates_batch, batch_generator):
+        # We yield the first batch too so the progress bar takes the first batch also into account
         yield first_coordinates_batch
         for tile in batch_generator:
             if tile is None:
@@ -171,7 +210,9 @@ class H5FileImageReader:
     def read_region(self, location, size):
         with h5py.File(self._filename, "r") as h5file:
             image_dataset = h5file["data"]
-            num_images, tile_height, tile_width, num_channels = image_dataset.shape
+            metadata = h5file["metadata"]
+            num_tiles = metadata["num_tiles"]
+            tile_height, tile_width, num_channels = image_dataset.shape[1:]
 
             stride_height = tile_height - self._tile_overlap[1]
             stride_width = tile_width - self._tile_overlap[0]
@@ -179,7 +220,7 @@ class H5FileImageReader:
             total_rows = math.ceil((self._size[1] - self._tile_overlap[1]) / stride_height)
             total_cols = math.ceil((self._size[0] - self._tile_overlap[0]) / stride_width)
 
-            assert total_rows * total_cols == num_images
+            assert total_rows * total_cols == num_tiles
 
             x, y = location
             w, h = size
