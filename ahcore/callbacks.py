@@ -100,7 +100,8 @@ class WriteH5Callback(Callback):
             self._semaphore.release()
             self._validation_index = 0
 
-    def generator(self, queue: queue.Queue):
+    @staticmethod
+    def generator(queue: queue.Queue):
         while True:
             batch = queue.get()
             if batch is None:
