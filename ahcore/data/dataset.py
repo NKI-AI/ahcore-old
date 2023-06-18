@@ -4,8 +4,6 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any, Callable, Iterator
 
 import pytorch_lightning as pl
@@ -105,6 +103,25 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._num_classes = data_description.num_classes
 
+        # Setup the datasets, especially the validation one as this populates the .mpps property.
+        self.setup(TrainerFn.VALIDATING)
+
+    @property
+    def fit_manifest(self):
+        return self._manifests.fit
+
+    @property
+    def val_manifest(self):
+        return self._manifests.validate
+
+    @property
+    def test_manifest(self):
+        return self._manifests.test
+
+    @property
+    def predict_manifest(self):
+        return self._manifests.predict
+
     def setup(self, stage: TrainerFn | None = None) -> None:
         if not stage:
             return
@@ -136,10 +153,20 @@ class DlupDataModule(pl.LightningDataModule):
                     stage=stage,
                 )
 
-                logger.info("Added dataset for %s with length %s.", image_manifest.identifier, len(dataset))
+                # Each time we see a dataset we find its mpp
+                filename = image_manifest.image[0]
+                curr_mpp = dataset.slide_image.mpp
+
+                logger.info(
+                    "Added dataset for %s with length %s (original mpp=%s).",
+                    image_manifest.identifier,
+                    len(dataset),
+                    curr_mpp,
+                )
                 yield dataset
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
+        # Let's trigger the creation of a the data loader
 
     def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn | None = None):
         if not data_iterator:

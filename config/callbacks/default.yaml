@@ -33,4 +33,4 @@ write_h5_callback:
   max_concurrent_writers: 4
 
 compute_wsi_metrics_callback:
-  reader: null
+  max_threads: 4

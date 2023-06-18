@@ -5,10 +5,7 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
-import multiprocessing
-import os
 from functools import partial
-from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any
 
@@ -16,9 +13,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch.nn.functional as F
 import torch.optim.optimizer
-from dlup._image import Resampling
 from dlup.data.dataset import ConcatDataset
-from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.trainer.states import TrainerFn
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch import nn
@@ -31,22 +26,6 @@ from ahcore.utils.model import ExtractFeaturesHook
 from ahcore.utils.plotting import plot_batch
 
 logger = get_logger(__name__)
-
-DIFFERENCE_INDEX_MAP = {
-    "under": 1,
-    "correct": 2,
-    "over": 3,
-}
-DIFFERENCE_COLORS = {
-    "under": "yellow",
-    "correct": "green",
-    "over": "red",
-}
-
-_LOOP_DONE = "LOOP_DONE"
-_WSI_PROCESSING = "PROCESSING_WSI"
-_WSI_DONE = "WSI_DONE"
-_TIFF_SAVE_PATH = get_cache_dir() / "tiffs"
 
 
 class AhCoreLightningModule(pl.LightningModule):
@@ -106,15 +85,14 @@ class AhCoreLightningModule(pl.LightningModule):
         self.predict_metadata: InferenceMetadata = self.INFERENCE_DICT  # Used for saving metadata during prediction
 
         self._new_val_wsi: bool | None  # indicates when we start a new WSI in val_dataloader
-        self._last_val_wsi_filename: str | None = None  # keeps track of last processed WSI
-        self._max_val_tiffs: int = self._data_description.max_val_tiffs if self._data_description.max_val_tiffs else 1
         self._written_val_tiffs: int = 0
         self._validation_index: int | None = None  # keeps track of running indices during validation loop
         self._validation_dataset: ConcatDataset | None = None
-        self._predictions_queue: Queue | None = None  # queue holding the predictions to be processed by tiffwriter
-        self._tiles_process: Process | None = None
         self._tile_shape: tuple[int, int] | None = None
-        multiprocessing.set_start_method("spawn")  # Set spawn method since cuda is incompatible with fork
+
+    @property
+    def wsi_metrics(self):
+        return self._wsi_metrics
 
     def forward(self, sample):
         """This function is only used during inference"""
@@ -214,10 +192,6 @@ class AhCoreLightningModule(pl.LightningModule):
             # add the current predictions to the queue, to be processed by the tiff writer process
             curr_val_dataset, num_grid_tiles = self._get_current_val_dataset(return_num_tiles=True)
 
-            self._enqueue_prediction(
-                {**batch, "prediction": _prediction, "tile_shape": self._tile_shape, "num_grid_tiles": num_grid_tiles},
-                current_wsi_filename,
-            )
             # prepare the validation index for the next batch's step
             self._validation_index += batch_size
             if batch_idx == 0:  # Log the images of the first step
@@ -225,43 +199,8 @@ class AhCoreLightningModule(pl.LightningModule):
                 # TODO: Can we extract the current stage from the trainer?
                 name = f"{self.STAGE_MAP[stage]}/images"
                 self.log_images(_input, target=predictions, step=self.global_step, name=f"{name}/prediction")
-                self.log_diff_image(_input, predictions=predictions, target=_target, roi=roi, name=name)
 
         return output
-
-    def log_diff_image(
-        self,
-        input: torch.Tensor,
-        predictions: torch.Tensor,
-        target: torch.Tensor,
-        roi: torch.Tensor | None,
-        name: str,
-    ) -> None:
-        if self._index_map is None:
-            return None
-
-        _target = target.detach().argmax(dim=1)
-        _predictions = predictions.argmax(dim=1)
-        _difference_plotting_function = partial(
-            plot_batch, index_map=DIFFERENCE_INDEX_MAP, colors=DIFFERENCE_COLORS, mask_as_polygon=True
-        )
-        for label in self._index_map:
-            index = self._index_map[label]
-            # TODO: Create a new function that generates this "mistake map"
-            is_predicted = (_predictions == index).int()
-            is_target = (_target == index).int()
-            is_one_of_both = ((is_predicted + is_target) > 0).int()
-            difference = ((is_predicted - is_target) + 2) * is_one_of_both
-            if roi is not None:
-                difference = difference * roi[:, 0, ...]
-
-            self.log_images(
-                input if roi is None else input * roi,  # Mask out the input, so it's clearer what is what
-                target=difference.int(),
-                step=self.global_step,
-                name=f"{name}/{label}",
-                plotting_fn=_difference_plotting_function,
-            )
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
@@ -293,12 +232,6 @@ class AhCoreLightningModule(pl.LightningModule):
             for robustness_metric in self._robustness_metrics:
                 self.log_dict(robustness_metric.compute(), sync_dist=True, prog_bar=True)
                 robustness_metric.reset()
-        "Adds a marker _WSI_DONE for the last WSI and LOOP_DONE flag to the queue and waits for child process to finish"
-        self._predictions_queue.put(
-            [{"tile_shape": self._tile_shape}, _WSI_DONE, None]
-        )  # mark the end of the last WSI in val loop
-        self._predictions_queue.put([None, _LOOP_DONE, None])  # mark the end of the validation loop
-        self._tiles_process.join()  # wait for the queue processing to complete
 
         # Log the WSI level metrics
         avg_scores = self._compute_wsi_metrics()
@@ -349,11 +282,9 @@ class AhCoreLightningModule(pl.LightningModule):
 
     def _initialize_validation_loop_attributes(self) -> None:
         """Initializes all the instance variables that are used for tracking WSI-level info during a validation loop."""
-        self._predictions_queue = Queue()
         self._new_val_wsi = True
         self._validation_index = 0
         self._set_val_loop_dataset()
-        self._start_new_process()
 
     def _set_val_loop_dataset(self) -> None:
         """Fixes a reference to the validation ConcatDataset that is used in the current val loop.
@@ -361,54 +292,6 @@ class AhCoreLightningModule(pl.LightningModule):
         To be called at the beginning of each validation run.
         """
         self._validation_dataset = self.trainer.datamodule.val_concat_dataset
-
-    def _start_new_process(self) -> None:
-        """Starts a new child process and adds it to the self._tiles_process"""
-        self._tiles_process = Process(target=_write_predictions_from_queue, args=(self._predictions_queue,))
-        self._tiles_process.start()
-
-    def _enqueue_prediction(self, batch: dict[str, torch.Tensor], filename: Path) -> None:
-        """Adds the required information to self._predictions_queue, to be consumed by the TiffWriter process.
-
-        Notes:
-            1. when we start processing a new WSI, we also create and push a new tiffwriter
-            2. in the queue, we mark the processing status of a WSI by either _WSI_PROCESSING or _WSI_DONE
-            3. we also keep track of when a WSI is done through self._new_val_wsi flag
-        """
-        if self._written_val_tiffs >= self._max_val_tiffs:
-            return
-        _tiff_writer = None
-        status = _WSI_PROCESSING
-        if self._new_val_wsi:  # we are starting batches from a new WSI
-            self._last_val_wsi_filename = filename
-            size = self._get_current_val_wsi_size()
-            save_name = _TIFF_SAVE_PATH / f"step_{self.global_step}" / Path(str(filename) + ".tiff")
-            os.makedirs(save_name.parent, exist_ok=True)
-            # create a new tiff writer for this WSI
-            # _tiff_writer = TifffileImageWriter(
-            #     filename=str(save_name),
-            #     size=size,
-            #     mpp=self._data_description.inference_grid.mpp,
-            #     tile_size=self._data_description.inference_grid.tile_size,
-            #     pyramid=True,
-            #     compression=TiffCompression("jpeg"),
-            #     quality=100,
-            #     interpolator=Resampling.NEAREST,
-            # )
-            self._new_val_wsi = False
-            # self._predictions_queue.put(
-            #     [{"num_grid_tiles": batch["num_grid_tiles"]}, status, _tiff_writer]
-            # )  # mark the start of a new WSI
-            # self._predictions_queue.put([batch, status, None])  # add the first batch
-        elif filename != self._last_val_wsi_filename:  # done with a WSI
-            self._written_val_tiffs += 1
-            self._new_val_wsi = True
-            self._last_val_wsi_filename = filename
-            # self._predictions_queue.put([{"tile_shape": self._tile_shape}, _WSI_DONE, None])  # mark the end of a WSI
-            # self._enqueue_prediction(batch, filename)  # enqueue the prediction for the new WSI
-        else:  # still processing the same WSI
-            status = _WSI_PROCESSING
-            # self._predictions_queue.put([batch, status, _tiff_writer])
 
     @property
     def validation_dataset(self) -> ConcatDataset:
@@ -450,51 +333,3 @@ def _get_filename_from_dataset(dataset) -> Path:
 def _process_prediction(prediction: torch.Tensor) -> np.ndarray:
     argmax_prediction = torch.argmax(prediction, dim=1)
     return argmax_prediction.cpu().numpy().astype("uint8")
-
-
-def _write_predictions_from_queue(queue: Queue) -> None:
-    """Creates tile generators from elements in `queue`, and consumes them through the underlying tiffwriters."""
-
-    def _tile_generator(num_tiles: int):
-        "create generator of predictions from the queue"
-        prev_index = -1  # keep track of the previous index, start before the first index
-        curr_region_index = 0
-        while True:
-            batch, status, _ = queue.get()
-
-            if status == _WSI_DONE:  # If we are done with WSI, check if there are any tiles left to write
-                while curr_region_index < num_tiles - 1:  # add empty tiles until the end of the WSI
-                    curr_region_index += 1
-                    yield np.zeros(batch["tile_shape"], dtype="uint8")
-                break
-
-            if status == _LOOP_DONE:
-                # if we are done with the validation loop, add a signal to the processor
-                queue.put([None, _LOOP_DONE, None])
-                break
-
-            prediction = batch["prediction"]
-            batch_prediction = _process_prediction(prediction)
-            for pred, curr_region_index in zip(batch_prediction, batch["region_index"]):
-                tile_step = curr_region_index - prev_index
-
-                if tile_step > 1:
-                    for _ in range(tile_step - 1):
-                        yield np.zeros(batch["tile_shape"], dtype="uint8")
-                prev_index = curr_region_index
-                yield pred
-
-    while True:
-        # retrieve first element for status inspection
-        batch, status, tiff_writer = queue.get()
-
-        if status == _WSI_DONE and tiff_writer is None:
-            continue  # skip the WSI_DONE signal -- this means there were no empty tiles to write
-
-        if status == _LOOP_DONE:
-            break
-
-        # create generator based on rest of the elements
-        curr_num_tiles = batch["num_grid_tiles"]
-        tiles_generator = _tile_generator(curr_num_tiles)
-        tiff_writer.from_tiles_iterator(tiles_generator)

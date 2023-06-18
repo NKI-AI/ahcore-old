@@ -99,7 +99,7 @@ def train(config: DictConfig) -> torch.Tensor | None:
             metrics[metric_class] = hydra.utils.instantiate(
                 config.metrics[metric_class], data_description=data_description
             )
-            logger.info(f"Metrics: {metrics}")
+    logger.info(f"Metrics: {metrics}")
 
     # Init lightning model
     if not config.lit_module.get("_target_"):

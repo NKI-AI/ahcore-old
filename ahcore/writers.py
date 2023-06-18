@@ -1,6 +1,5 @@
 # encoding: utf-8
 import json
-from enum import Enum
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple
 
@@ -12,24 +11,6 @@ from dlup.tiling import Grid, GridOrder, TilingMode
 from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
-
-
-#
-# class _DatasetIterator:
-#     def __init__(self, dataset):
-#         self.dataset = dataset
-#         self.index = 0
-#
-#     def __iter__(self):
-#         return self
-#
-#     def __next__(self):
-#         if self.index < len(self.dataset):
-#             item = self.dataset[self.index]
-#             self.index += 1
-#             return item
-#         else:
-#             raise StopIteration
 
 
 class H5FileImageWriter:
@@ -109,6 +90,7 @@ class H5FileImageWriter:
             "dtype": str(batch_dtype),
             "shape": tuple(batch_shape[1:]),
             "size": (int(self._size[0]), int(self._size[1])),
+            "num_channels": batch_shape[1],
             "num_samples": self._num_samples,
             "tile_size": tuple(self._tile_size),
             "tile_overlap": tuple(self._tile_overlap),
