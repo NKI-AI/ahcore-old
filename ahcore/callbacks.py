@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Semaphore
 from typing import TypedDict
 import numpy.typing as npt
+import multiprocessing
 import numpy as np
 
 import pytorch_lightning as pl
@@ -22,6 +23,7 @@ from ahcore.writers import H5FileImageWriter
 from torch.utils.data import Dataset
 from dlup.tiling import Grid, TilingMode, GridOrder
 from dlup.annotations import WsiAnnotations
+from dlup.writers import TifffileImageWriter, TiffCompression
 
 logger = get_logger(__name__)
 
@@ -100,7 +102,7 @@ class WriteH5Callback(Callback):
     def writers(self):
         return self._writers
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0):
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
             raise ValueError(
@@ -159,7 +161,7 @@ class WriteH5Callback(Callback):
         self._writers[filename]["queue"].put((coordinates, prediction))
         self._validation_index += prediction.shape[0]
 
-    def on_validation_end(self, trainer, pl_module):
+    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if self._current_filename is not None:
             self._writers[self._current_filename]["queue"].put(None)
             self._writers[self._current_filename]["thread"].join()
@@ -225,7 +227,7 @@ class ComputeWsiMetricsCallback(Callback):
     def metrics(self):
         return self._metrics
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             self._filenames[_get_output_filename(filename, step=pl_module.global_step)] = filename
@@ -265,10 +267,65 @@ class ComputeWsiMetricsCallback(Callback):
 
             return self._wsi_metrics
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
         self._logger.info("Computing metrics for %s predictions", len(self._filenames))
 
         self._metrics = self.compute_metrics()
 
         trainer.logger.log_metrics({"custom_metric": 1.0}, step=trainer.global_step)
+
+class WriteTiffCallback(Callback):
+    def __init__(self, max_concurrent_writers: int):
+        self._pool = multiprocessing.Pool(max_concurrent_writers)
+        self._logger = get_logger(type(self).__name__)
+        self.__write_h5_callback_index = -1
+
+        self._h5_reader = H5FileImageReader
+        self._tiff_writer = TifffileImageWriter
+
+        self._tile_size = (1024, 1024)
+
+        self._tile_process_function = None  # function that is applied to the tile.
+        self._filename_mapping = None # Function that maps h5 name to something else
+
+        self._filenames = [] # This has all the h5 files
+
+    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
+        has_write_h5_callback = None
+        for idx, callback in enumerate(trainer.callbacks):
+            if isinstance(callback, WriteH5Callback):
+                has_write_h5_callback = True
+                self.__write_h5_callback_index = idx
+                self._logger.info("Found WriteH5Callback at index %s: %s", idx, trainer.callbacks[idx])
+                break
+        if not has_write_h5_callback:
+            raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        results = []
+        for filename in self._filenames:
+            result = self._pool.apply_async(self._write_tiff, (filename,))
+            results.append(result)
+
+        for result in results:
+            result.get()  # Wait for the process to complete.
+
+    def _write_tiff(self, filename):
+        with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
+            writer = TifffileImageWriter(self._filename_mapping(filename), tile_size=self._tile_size)
+            writer.from_tiles_iterator(self._iterator_from_reader(h5_reader))
+
+    def _iterator_from_reader(self, h5_reader: H5FileImageReader):
+        grid = Grid.from_tiling(
+            (0, 0),
+            h5_reader.size,
+            tile_size=self._tile_size,
+            tile_overlap=(0, 0),
+            mode=TilingMode.overflow,
+            order=GridOrder.C,
+        )
+
+        for location in grid:
+            region = h5_reader.read_region(location, self._tile_size)
+            yield region if self._tile_process_function is None else self._tile_process_function(region)

@@ -52,6 +52,10 @@ class H5FileImageReader:
         self._dtype = None
         self._stride = None
 
+    @property
+    def size(self):
+        return self._size
+
     def get_mpp(self, scaling):
         raise NotImplementedError
 
