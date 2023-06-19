@@ -52,8 +52,8 @@ class H5FileImageReader:
         self._dtype = None
         self._stride = None
 
-    def get_mpp(self):
-        return self._mpp
+    def get_mpp(self, scaling):
+        raise NotImplementedError
 
     def get_scaling(self, mpp: float | None) -> float:
         """Inverse of get_mpp()."""
@@ -131,7 +131,6 @@ class H5FileImageReader:
                 img_end_x = min(w, end_x)
 
                 if self._stitching_mode == StitchingMode.CROP:
-                    raise NotImplementedError
                     crop_start_y = img_start_y - start_y
                     crop_end_y = img_end_y - start_y
                     crop_start_x = img_start_x - start_x
