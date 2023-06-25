@@ -157,7 +157,10 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
-        prediction = batch["prediction"].detach().cpu().numpy()
+        # prediction = batch["prediction"].detach().cpu().numpy()
+        # TODO: We store temporarily the target rather than the prediction for easy comparison
+        prediction = batch["annotation_data"]["mask"].detach().cpu().numpy()
+
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
         self._writers[filename]["queue"].put((coordinates, prediction))
