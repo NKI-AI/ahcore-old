@@ -1,29 +1,29 @@
 # encoding: utf-8
 import concurrent.futures
 import hashlib
+import multiprocessing
 import queue
 import threading
 from pathlib import Path
 from threading import Semaphore
 from typing import TypedDict
-import numpy.typing as npt
-import multiprocessing
-import numpy as np
 
+import numpy as np
+import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 from dlup import SlideImage
+from dlup.annotations import WsiAnnotations
+from dlup.tiling import Grid, GridOrder, TilingMode
+from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
+from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
-from ahcore.utils.io import get_cache_dir, get_logger
 from ahcore.utils.data import DataDescription
-from ahcore.utils.manifest import ImageManifest, _ImageBackends, AnnotationModel, AnnotationReaders, _parse_annotations
+from ahcore.utils.io import get_cache_dir, get_logger
+from ahcore.utils.manifest import AnnotationModel, AnnotationReaders, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
-from torch.utils.data import Dataset
-from dlup.tiling import Grid, TilingMode, GridOrder
-from dlup.annotations import WsiAnnotations
-from dlup.writers import TifffileImageWriter, TiffCompression
 
 logger = get_logger(__name__)
 
@@ -102,7 +102,9 @@ class WriteH5Callback(Callback):
     def writers(self):
         return self._writers
 
-    def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
             raise ValueError(
@@ -227,7 +229,9 @@ class ComputeWsiMetricsCallback(Callback):
     def metrics(self):
         return self._metrics
 
-    def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             self._filenames[_get_output_filename(filename, step=pl_module.global_step)] = filename
@@ -275,6 +279,7 @@ class ComputeWsiMetricsCallback(Callback):
 
         trainer.logger.log_metrics({"custom_metric": 1.0}, step=trainer.global_step)
 
+
 class WriteTiffCallback(Callback):
     def __init__(self, max_concurrent_writers: int):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
@@ -287,9 +292,9 @@ class WriteTiffCallback(Callback):
         self._tile_size = (1024, 1024)
 
         self._tile_process_function = None  # function that is applied to the tile.
-        self._filename_mapping = None # Function that maps h5 name to something else
+        self._filename_mapping = None  # Function that maps h5 name to something else
 
-        self._filenames = [] # This has all the h5 files
+        self._filenames = []  # This has all the h5 files
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
         has_write_h5_callback = None

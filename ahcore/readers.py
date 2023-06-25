@@ -5,6 +5,9 @@ from enum import Enum
 
 import h5py
 import numpy as np
+import numpy.typing as npt
+from dlup.types import GenericNumber
+from scipy.ndimage import map_coordinates
 
 
 class StitchingMode(Enum):
@@ -88,7 +91,72 @@ class H5FileImageReader:
         self.__empty_tile = np.zeros((self._num_channels, *self._tile_size), dtype=self._dtype)
         return self.__empty_tile
 
-    def read_region(self, location, size):
+    def read_region(
+        self, location: tuple[GenericNumber, GenericNumber], scaling: float, size: tuple[int, int]
+    ) -> npt.NDArray:
+        """
+
+        Parameters
+        ----------
+        location : tuple
+            Location from the top left (x, y) in pixel coordinates given at the requested scaling.
+        scaling : float
+        size : tuple[int, int]
+            Size of the output region
+
+        Returns
+        -------
+        np.ndarray
+            The requested region.
+        """
+        if scaling == 1.0:
+            return self.read_region_raw(location, size)
+
+        order = 1
+        # Calculate original location and size considering the scaling
+        original_location = tuple(map(lambda l: math.floor(l / scaling) - order, location))
+        original_size = tuple(map(lambda s: math.ceil(s / scaling) + order, size))
+
+        raw_region = self.read_region_raw(original_location, original_size)
+
+        # Determine the fractional start and end coordinates for mapping
+        fractional_start = tuple(map(lambda l, ol: (l / scaling) - ol + order, location, original_location))
+        fractional_end = tuple(fs + size[i] / scaling for i, fs in enumerate(fractional_start))
+
+        # Create an array of coordinates for map_coordinates
+        coordinates = np.mgrid[
+            fractional_start[0] : fractional_end[0] : complex(size[0]),
+            fractional_start[1] : fractional_end[1] : complex(size[1]),
+        ]
+        coordinates = np.moveaxis(coordinates, 0, -1)
+
+        # Interpolate using map_coordinates for all channels
+        grid = np.mgrid[: raw_region.shape[0]]
+        coordinates = np.concatenate([grid[:, None, None], coordinates], axis=0)
+        rescaled_region = map_coordinates(raw_region, coordinates, order=order)
+
+        return rescaled_region
+
+    def read_region_raw(self, location: tuple[int, int], size: tuple[int, int]) -> npt.NDArray:
+        """
+        Reads a region in the stored h5 file. This function stitches the regions as saved in the h5 file. Doing this
+        it takes into account:
+        1) The region overlap, several region merging strategies are implemented: cropping, averaging across borders
+          and taking the maximum across borders.
+        2) If tiles are saved or not. In case the tiles are skipped due to a background mask, an empty tile is returned.
+
+        Parameters
+        ----------
+        location : tuple[int, int]
+            Coordinates (x, y) of the upper left corner of the region.
+        size : tuple[int, int]
+            The (h, w) size of the extracted region.
+
+        Returns
+        -------
+        np.ndarray
+            Extracted region
+        """
         if self._h5file is None:
             self._open_file()
 
