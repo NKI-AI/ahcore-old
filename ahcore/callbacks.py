@@ -58,6 +58,7 @@ class ValidationDataset(Dataset):
             mode=TilingMode.overflow,
             order=GridOrder.C,
         )
+
         self._annotations = annotations
 
         # # We need to filter the grid, perhaps check how this is done in dlup.
@@ -77,18 +78,23 @@ class ValidationDataset(Dataset):
             # Calculate new region size
             new_width = min(width, self._reader.size[0] - x)
             new_height = min(height, self._reader.size[1] - y)
-            clipped_region = self._reader.read_region_raw((x, y), (new_width, new_height))
+            clipped_region = self._reader.read_region_raw((x, y), (new_height, new_width))
             prediction = np.zeros((clipped_region.shape[0], *self._region_size), dtype=clipped_region.dtype)
             prediction[:new_height, :new_width] = clipped_region
         else:
             prediction = self._reader.read_region_raw(coordinates, self._region_size)
         # TODO: argmax?
-        ground_truth = self._annotations.read_region(coordinates * self._scaling, self._scaling, self._region_size)
+        ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
+
         ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})["annotations"]
         points, region, roi = convert_annotations(ground_truth, self._region_size, index_map=self._data_description.index_map, roi_name="roi", )
+
         region = OneHotEncodeMask(index_map=self._data_description.index_map)({"annotation_data": {"mask": region}})["annotation_data"]["mask"]
 
         return region, prediction, roi[np.newaxis, ...]
+
+    def __len__(self):
+        return len(self._grid)
 
 
 class _WriterMessage(TypedDict):
@@ -295,8 +301,9 @@ class ComputeWsiMetricsCallback(Callback):
                 mask = _parse_annotations(validation_manifest.mask, base_dir=self._data_description.annotations_dir)
                 annotations = _parse_annotations(validation_manifest.annotations, base_dir=self._data_description.annotations_dir)
                 dataset_of_validation_image = ValidationDataset(data_description=self._data_description, native_mpp=native_mpp, mask=mask, annotations=annotations, reader=h5reader)
-
-                for prediction, ground_truth, roi in dataset_of_validation_image:
+                print("Got here!!")
+                for idx in range(len(dataset_of_validation_image)):
+                    prediction, ground_truth, roi = dataset_of_validation_image[idx]
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
