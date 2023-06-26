@@ -69,7 +69,19 @@ class ValidationDataset(Dataset):
     def __getitem__(self, idx):
         coordinates = self._grid[idx]
 
-        prediction = self._reader.read_region_raw(coordinates, self._region_size)
+        x, y = coordinates
+        width, height = self._region_size
+
+        # Check if the region exceeds the reader's dimensions
+        if x + width > self._reader.size[0] or y + height > self._reader.size[1]:
+            # Calculate new region size
+            new_width = min(width, self._reader.size[0] - x)
+            new_height = min(height, self._reader.size[1] - y)
+            clipped_region = self._reader.read_region_raw((x, y), (new_width, new_height))
+            prediction = np.zeros((clipped_region.shape[0], *self._region_size), dtype=clipped_region.dtype)
+            prediction[:new_height, :new_width] = clipped_region
+        else:
+            prediction = self._reader.read_region_raw(coordinates, self._region_size)
         # TODO: argmax?
         ground_truth = self._annotations.read_region(coordinates * self._scaling, self._scaling, self._region_size)
         ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})["annotations"]
