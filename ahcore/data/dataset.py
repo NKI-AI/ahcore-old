@@ -103,8 +103,13 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._num_classes = data_description.num_classes
 
+        self._mpps = {}
+
         # Setup the datasets, especially the validation one as this populates the .mpps property.
-        self.setup(TrainerFn.VALIDATING)
+
+    @property
+    def mpps(self):
+        return self._mpps
 
     @property
     def fit_manifest(self):
@@ -154,8 +159,9 @@ class DlupDataModule(pl.LightningDataModule):
                 )
 
                 # Each time we see a dataset we find its mpp
-                filename = image_manifest.image[0]
+                filename = self.data_description.data_dir / image_manifest.image[0]
                 curr_mpp = dataset.slide_image.mpp
+                self._mpps[filename] = curr_mpp
 
                 logger.info(
                     "Added dataset for %s with length %s (original mpp=%s).",
