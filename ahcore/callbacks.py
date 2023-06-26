@@ -2,6 +2,7 @@
 import concurrent.futures
 import hashlib
 import multiprocessing
+import pathlib
 import queue
 import threading
 from pathlib import Path
@@ -18,50 +19,64 @@ from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
+from dlup.data.transforms import RenameLabels, convert_annotations
 
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_cache_dir, get_logger
 from ahcore.utils.manifest import AnnotationModel, AnnotationReaders, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
+from ahcore.transforms.pre_transforms import OneHotEncodeMask
 
 logger = get_logger(__name__)
 
 
 class ValidationDataset(Dataset):
-    def __init__(self, data_description: DataDescription, manifest: ImageManifest, reader: H5FileImageReader):
-        self._native_mpp = manifest.mpp
+    def __init__(self, data_description, native_mpp: float, mask, annotations, reader: H5FileImageReader):
 
-        self._scaling = reader.get_mpp() / self._native_mpp
+        self._data_description = data_description
+        self._native_mpp = native_mpp
 
-        mask = _parse_annotations(manifest.mask, base_dir=data_description.annotations_dir)
-        annotations = _parse_annotations(manifest.annotations, base_dir=data_description.annotations_dir)
+        self._scaling = self._native_mpp / reader.get_mpp(1.0)
 
         self._reader = reader
 
+        self._region_size = (1024, 1024)
         # TODO: WsiAnnotations should have a .size property
         if isinstance(annotations, WsiAnnotations):
             ann_origin, ann_size = annotations.bounding_box
         else:
             raise NotImplementedError
 
-        grid = Grid.from_tiling(
-            ann_origin,
-            ann_size,
-            tile_size=(1024, 1024),
+        self._annotations = annotations
+
+        self._grid = Grid.from_tiling(
+            (0, 0),
+            reader.size,
+            tile_size=self._region_size,
             tile_overlap=(0, 0),
             mode=TilingMode.overflow,
             order=GridOrder.C,
         )
+        self._annotations = annotations
 
-        # We need to filter the grid, perhaps check how this is done in dlup.
-        self._regions = []
-        for grid_elem in grid:
-            coordinates = grid_elem * self._scaling
-            # Now read the region etc.
+        # # We need to filter the grid, perhaps check how this is done in dlup.
+        # self._regions = []
+        # for grid_elem in grid:
+        #     coordinates = grid_elem * self._scaling
+        #     reader.read_region_raw(location=coordinates, size=(1024, 1024))
 
     def __getitem__(self, idx):
-        pass
+        coordinates = self._grid[idx]
+
+        prediction = self._reader.read_region_raw(coordinates, self._region_size)
+        # TODO: argmax?
+        ground_truth = self._annotations.read_region(coordinates * self._scaling, self._scaling, self._region_size)
+        ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})["annotations"]
+        points, region, roi = convert_annotations(ground_truth, self._region_size, index_map=self._data_description.index_map, roi_name="roi", )
+        region = OneHotEncodeMask(index_map=self._data_description.index_map)({"annotation_data": {"mask": region}})["annotation_data"]["mask"]
+
+        return region, prediction, roi[np.newaxis, ...]
 
 
 class _WriterMessage(TypedDict):
@@ -210,10 +225,11 @@ class ComputeWsiMetricsCallback(Callback):
             )
 
         self._wsi_metrics = pl_module.wsi_metrics
+        self._data_description = trainer.datamodule.data_description
 
         # We should also attach the validation manifest to the class, but convert it to a dictionary mapping
         # the UUID
-        data_dir = trainer.datamodule.data_description.data_dir
+        data_dir = self._data_description.data_dir
         for manifest in trainer.datamodule.val_manifest:
             image_fn = data_dir / manifest.image[0]
             self._validation_manifests[_get_uuid_for_filename(image_fn)] = manifest
@@ -260,15 +276,20 @@ class ComputeWsiMetricsCallback(Callback):
     def compute_metrics_for_case(self, filename):
         wsi_filename = self._filenames[filename]
         validation_manifest = self._validation_manifests[_get_uuid_for_filename(wsi_filename)]
-
+        native_mpp = validation_manifest.mpp
         with self._semaphore:  # Only allow a certain number of threads to compute metrics concurrently
             # Compute the metric for one filename here...
             with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5reader:
+                mask = _parse_annotations(validation_manifest.mask, base_dir=self._data_description.annotations_dir)
+                annotations = _parse_annotations(validation_manifest.annotations, base_dir=self._data_description.annotations_dir)
+                dataset_of_validation_image = ValidationDataset(data_description=self._data_description, native_mpp=native_mpp, mask=mask, annotations=annotations, reader=h5reader)
 
-                predictions = None
-                target = None
-                roi = None
-                # self._wsi_metrics.process_batch(predictions=predictions, target=target, roi=roi)
+                for prediction, ground_truth, roi in dataset_of_validation_image:
+                    _prediction = torch.from_numpy(prediction).unsqueeze(0)
+                    _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
+                    _roi = torch.from_numpy(roi).unsqueeze(0)
+
+                    self._wsi_metrics.process_batch(predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename))
 
                 metrics = self._wsi_metrics.get_average_score()
 
