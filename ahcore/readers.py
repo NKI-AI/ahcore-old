@@ -60,7 +60,7 @@ class H5FileImageReader:
         return self._size
 
     def get_mpp(self, scaling):
-        raise NotImplementedError
+        return self._mpp / scaling
 
     def get_scaling(self, mpp: float | None) -> float:
         """Inverse of get_mpp()."""
@@ -192,10 +192,10 @@ class H5FileImageReader:
                     if tile_index_in_image_dataset == -1
                     else image_dataset[tile_index_in_image_dataset]
                 )
-                start_y = i * stride_height - y
-                end_y = start_y + tile_height
-                start_x = j * stride_width - x
-                end_x = start_x + tile_width
+                start_y = i * self._stride[1] - y
+                end_y = start_y + self._tile_size[1]
+                start_x = j * self._stride[0] - x
+                end_x = start_x + self._tile_size[0]
 
                 img_start_y = max(0, start_y)
                 img_end_y = min(h, end_y)
