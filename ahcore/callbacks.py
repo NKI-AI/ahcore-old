@@ -224,6 +224,7 @@ class WriteH5Callback(Callback):
 
 class ComputeWsiMetricsCallback(Callback):
     def __init__(self, max_threads=10):
+        self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
         self._filenames: dict[Path, Path] = {}
@@ -320,8 +321,6 @@ class ComputeWsiMetricsCallback(Callback):
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
-
-                    logger.info(f"{idx+1} / {len(dataset_of_validation_image)} : Prediction: {_prediction.sum()}, ground truth: {_ground_truth.sum()}, ROI: {np.prod(_roi.shape)/_roi.sum()}")
 
                     self._wsi_metrics.process_batch(
                         predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename)
