@@ -105,7 +105,6 @@ class _ValidationDataset(Dataset):
             prediction[:new_height, :new_width] = clipped_region
         else:
             prediction = self._reader.read_region_raw(coordinates, self._region_size)
-        # TODO: argmax?
         ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
 
         ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})[
@@ -192,10 +191,6 @@ class WriteH5Callback(Callback):
 
             current_dataset, _ = pl_module.validation_dataset.index_to_dataset(self._validation_index)
             slide_image = current_dataset.slide_image
-            # We need a sanity check for now
-            # TODO: Remove when all works
-            if slide_image.identifier != filename:
-                raise ValueError("Identifier should be the same as filename.")
 
             mpp = pl_module.data_description.inference_grid.mpp
             size = slide_image.get_scaled_size(slide_image.get_scaling(mpp))
@@ -220,9 +215,7 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
-        # prediction = batch["prediction"].detach().cpu().numpy()
-        # TODO: We store temporarily the target rather than the prediction for easy comparison
-        prediction = batch["target"].detach().cpu().numpy()
+        prediction = batch["prediction"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
@@ -344,6 +337,8 @@ class ComputeWsiMetricsCallback(Callback):
                 for idx in range(len(dataset_of_validation_image)):
                     prediction, ground_truth, roi = dataset_of_validation_image[idx]
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
+                    _prediction = torch.argmax(_prediction, dim=1)
+                    _prediction = one_hot_encoding(index_map=self._data_description.index_map, mask=_prediction)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
 
@@ -351,23 +346,17 @@ class ComputeWsiMetricsCallback(Callback):
                         predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename)
                     )
 
-                metrics = self._wsi_metrics.get_average_score()
-            return metrics
-
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
 
-        metrics = self.compute_metrics()
+        self.compute_metrics()
+        metrics = self._wsi_metrics.get_average_score()
         self._wsi_metrics.reset()
 
         self._logger.info("Metrics: %s", metrics)
-
-        # TODO: Why does this output a list??
-        pl_module.log_dict(metrics[0], prog_bar=True)
-        # TODO: Which is needed??
-        trainer.logger.log_metrics(metrics[0], step=trainer.global_step)
-
+        pl_module.log_dict(metrics, prog_bar=True)
+        trainer.logger.log_metrics(metrics, step=trainer.global_step)
 
 
 class WriteTiffCallback(Callback):
