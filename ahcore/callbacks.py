@@ -245,11 +245,10 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_threads=10, tile_operation: Optional[str] = "argmax"):
+    def __init__(self, max_threads=10):
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
-        self._tile_operation = tile_operation
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
