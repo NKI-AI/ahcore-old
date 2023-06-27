@@ -349,9 +349,9 @@ class ComputeWsiMetricsCallback(Callback):
                     )
 
                 metrics = self._wsi_metrics.get_average_score()
+                self._wsi_metrics.reset()
 
-            return 1.0
-            # return self._wsi_metrics
+            return metrics
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
