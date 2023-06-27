@@ -370,7 +370,9 @@ class WriteTiffCallback(Callback):
 
         self._tile_size = (1024, 1024)
 
+        # TODO: Handle tile operation such that we avoid repetitions.
         self._tile_process_function = None  # function that is applied to the tile.
+        # TODO: Map H5 to a different filename
         self._filename_mapping = None  # Function that maps h5 name to something else
 
         self._filenames = []  # This has all the h5 files
