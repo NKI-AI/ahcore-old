@@ -42,17 +42,17 @@ def compute_rois(
 
     """
     bbox_coords, bbox_size = mask.bounding_box
-    logger.info("Annotations bounding box: %s, %s", bbox_coords, bbox_size)
+    logger.debug("Annotations bounding box: %s, %s", bbox_coords, bbox_size)
     total_roi = mask.read_region((0, 0), 1.0, (bbox_coords[0] + bbox_size[0], bbox_coords[1] + bbox_size[1]))
 
     _rois = np.asarray([_.bounds for _ in total_roi])
     _rois[:, 2:] = _rois[:, 2:] - _rois[:, :2]
     rois = [((roi[0], roi[1]), (roi[2], roi[3])) for roi in _rois]
-    logger.info("Regions of interest: %s", rois)
+    logger.debug("Regions of interest: %s", rois)
 
     if centered:
         centered_rois = _get_centered_rois(rois, tile_size, tile_overlap)
-        logger.info("Centered ROIs: %s", centered_rois)
+        logger.debug("Centered ROIs: %s", centered_rois)
         return centered_rois
 
     return rois
@@ -77,7 +77,7 @@ def _get_centered_rois(roi_boxes: _Rois, tile_size: tuple[int, int], tile_overla
         List of ROIs (coordinates, size).
 
     """
-    logger.info("Computing balanced ROIs from ROI boxes %s", roi_boxes)
+    logger.debug("Computing balanced ROIs from ROI boxes %s", roi_boxes)
     region_sizes = [_compute_effective_size(roi_size, tile_size, tile_overlap) for _, roi_size in roi_boxes]
 
     output_rois: _Rois = []
