@@ -2,7 +2,6 @@
 import concurrent.futures
 import hashlib
 import multiprocessing
-import pathlib
 import queue
 import threading
 from pathlib import Path
@@ -15,18 +14,17 @@ import pytorch_lightning as pl
 import torch
 from dlup import SlideImage
 from dlup.annotations import WsiAnnotations
+from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
-from dlup.data.transforms import RenameLabels, convert_annotations
 
 from ahcore.readers import H5FileImageReader, StitchingMode
-from ahcore.utils.data import DataDescription
-from ahcore.utils.io import get_cache_dir, get_logger
-from ahcore.utils.manifest import AnnotationModel, AnnotationReaders, ImageManifest, _ImageBackends, _parse_annotations
-from ahcore.writers import H5FileImageWriter
 from ahcore.transforms.pre_transforms import OneHotEncodeMask
+from ahcore.utils.io import get_cache_dir, get_logger
+from ahcore.utils.manifest import ImageManifest, _ImageBackends, _parse_annotations
+from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
 
@@ -92,10 +90,19 @@ class ValidationDataset(Dataset):
         # TODO: argmax?
         ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
 
-        ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})["annotations"]
-        points, region, roi = convert_annotations(ground_truth, self._region_size, index_map=self._data_description.index_map, roi_name="roi", )
+        ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})[
+            "annotations"
+        ]
+        points, region, roi = convert_annotations(
+            ground_truth,
+            self._region_size,
+            index_map=self._data_description.index_map,
+            roi_name="roi",
+        )
 
-        region = OneHotEncodeMask(index_map=self._data_description.index_map)({"annotation_data": {"mask": region}})["annotation_data"]["mask"]
+        region = OneHotEncodeMask(index_map=self._data_description.index_map)({"annotation_data": {"mask": region}})[
+            "annotation_data"
+        ]["mask"]
 
         return region, prediction, roi[np.newaxis, ...]
 
@@ -305,8 +312,16 @@ class ComputeWsiMetricsCallback(Callback):
             # Compute the metric for one filename here...
             with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5reader:
                 mask = _parse_annotations(validation_manifest.mask, base_dir=self._data_description.annotations_dir)
-                annotations = _parse_annotations(validation_manifest.annotations, base_dir=self._data_description.annotations_dir)
-                dataset_of_validation_image = ValidationDataset(data_description=self._data_description, native_mpp=native_mpp, mask=mask, annotations=annotations, reader=h5reader)
+                annotations = _parse_annotations(
+                    validation_manifest.annotations, base_dir=self._data_description.annotations_dir
+                )
+                dataset_of_validation_image = ValidationDataset(
+                    data_description=self._data_description,
+                    native_mpp=native_mpp,
+                    mask=mask,
+                    annotations=annotations,
+                    reader=h5reader,
+                )
                 print("Got here!!")
                 for idx in range(len(dataset_of_validation_image)):
                     prediction, ground_truth, roi = dataset_of_validation_image[idx]
@@ -314,7 +329,9 @@ class ComputeWsiMetricsCallback(Callback):
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
 
-                    self._wsi_metrics.process_batch(predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename))
+                    self._wsi_metrics.process_batch(
+                        predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename)
+                    )
 
                 metrics = self._wsi_metrics.get_average_score()
 
