@@ -142,12 +142,12 @@ def _get_uuid_for_filename(input_path: Path) -> str:
     return hex_dig
 
 
-def _get_output_filename(input_path: Path, step: None | int | str = None) -> Path:
+def _get_output_filename(input_path: Path, epoch: None | int | str = None) -> Path:
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
-    if step:
-        return get_cache_dir() / "h5s" / f"step_{step}" / f"{hex_dig}.h5"
+    if epoch:
+        return get_cache_dir() / "h5s" / f"epoch_{epoch}" / f"{hex_dig}.h5"
     return get_cache_dir() / "h5s" / f"{hex_dig}.h5"
 
 
@@ -180,7 +180,7 @@ class WriteH5Callback(Callback):
             # TODO: This filename might contain 'global_step', or only give the last one depending on settings
             # TODO: These files can be very large
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
-            output_filename = _get_output_filename(filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
             self._logger.debug("%s -> %s", filename, output_filename)
             if self._current_filename is not None:
@@ -301,7 +301,7 @@ class ComputeWsiMetricsCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
 
