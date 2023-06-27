@@ -61,6 +61,8 @@ class _ValidationDataset(Dataset):
         self._reader = reader
         self._region_size = region_size
 
+        self._logger = get_logger(type(self).__name__)
+
         if not isinstance(annotations, WsiAnnotations):
             raise NotImplementedError
         if mask is not None and not isinstance(mask, WsiAnnotations):
@@ -85,7 +87,7 @@ class _ValidationDataset(Dataset):
             mask_area = mask.read_region(coordinates, self._scaling, self._region_size)
             if sum([_.area for _ in mask_area]) > 0:
                 self._regions.append(coordinates)
-        logger.info("Number of validation regions: %s", len(self._regions))
+        self._logger.debug("Number of validation regions: %s", len(self._regions))
 
     def __getitem__(self, idx):
         coordinates = self._regions[idx]
@@ -160,6 +162,8 @@ class WriteH5Callback(Callback):
         self._semaphore = Semaphore(max_concurrent_writers)
         self._validation_index = 0
 
+        self._logger = get_logger(type(self).__name__)
+
     @property
     def writers(self):
         return self._writers
@@ -181,7 +185,7 @@ class WriteH5Callback(Callback):
             output_filename = _get_output_filename(filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
 
-            logger.info("Got new filename in WriteH5Callback %s. Will write to %s", filename, output_filename)
+            self._logger.debug("Got new filename in WriteH5Callback %s. Will write to %s", filename, output_filename)
             if self._current_filename is not None:
                 self._writers[self._current_filename]["queue"].put(None)  # Add None to writer's queue
                 self._writers[self._current_filename]["thread"].join()
@@ -317,7 +321,7 @@ class ComputeWsiMetricsCallback(Callback):
                     self._logger.error("%r generated an exception: %s" % (filename, exc))
                 else:
                     metrics.append(metric)
-                    self._logger.info("Metric for %r is %s" % (filename, metric))
+                    self._logger.debug("Metric for %r is %s" % (filename, metric))
         return metrics
 
     def compute_metrics_for_case(self, filename):
@@ -353,7 +357,7 @@ class ComputeWsiMetricsCallback(Callback):
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
-        self._logger.info("Computing metrics for %s predictions", len(self._filenames))
+        self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
 
         metrics = self.compute_metrics()
         self._wsi_metrics.reset()

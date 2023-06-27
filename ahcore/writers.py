@@ -40,7 +40,8 @@ class H5FileImageWriter:
         self._tile_indices: Optional[h5py.Dataset] = None
         self._current_index: int = 0
 
-        logger.info("Writing h5 to %s", self._filename)
+        self._logger = get_logger(type(self).__name__)
+        self._logger.debug("Writing h5 to %s", self._filename)
 
     def init_writer(self, first_batch: np.ndarray, h5file: h5py.File) -> None:
         """Initializes the image_dataset based on the first tile."""
@@ -133,7 +134,7 @@ class H5FileImageWriter:
                     self._current_index += batch_size
 
         except Exception as e:
-            logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
+            self._logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
 
         # When done writing rename the file.
         self._filename.with_suffix(".h5.partial").rename(self._filename)
