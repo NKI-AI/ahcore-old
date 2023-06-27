@@ -182,7 +182,7 @@ class WriteH5Callback(Callback):
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
             output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            self._logger.info("%s -> %s", filename, output_filename)
+            self._logger.debug("%s -> %s", filename, output_filename)
             if self._current_filename is not None:
                 self._writers[self._current_filename]["queue"].put(None)  # Add None to writer's queue
                 self._writers[self._current_filename]["thread"].join()
@@ -302,7 +302,7 @@ class ComputeWsiMetricsCallback(Callback):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
-            self._logger.info("%s -> %s", filename, output_filename)
+            self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
 
     def compute_metrics(self):
@@ -361,7 +361,9 @@ class ComputeWsiMetricsCallback(Callback):
         metrics = self.compute_metrics()
         self._wsi_metrics.reset()
 
-        trainer.logger.log_metrics({"custom_metric": 1.0}, step=trainer.global_step)
+        self._logger.info("Metrics: %s", metrics)
+
+        trainer.logger.log_metrics(metrics, step=trainer.global_step)
 
 
 class WriteTiffCallback(Callback):
