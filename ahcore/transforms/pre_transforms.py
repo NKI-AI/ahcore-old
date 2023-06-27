@@ -157,6 +157,30 @@ class OneHotEncodeMask:
         return sample
 
 
+def one_hot_encoding(index_map: dict[str, int], mask : np.ndarray) -> np.ndarray:
+    """
+    functional interface to convert labels/predictions into one-hot codes
+
+    Parameters
+    ----------
+    index_map : dict[str, int]
+        Index map mapping the label name to the integer value it has in the mask.
+
+    mask: np.ndarray
+        The numpy array of model predictions or ground truth labels.
+
+    Returns
+    -------
+    new_mask: np.ndarray
+        One-hot encoded output
+    """
+    largest_index = max(index_map.values())
+    new_mask = np.zeros((largest_index + 1, *mask.shape))
+    for idx in range(largest_index + 1):
+        new_mask[idx] = (mask == idx).astype(np.float32)
+    return new_mask
+
+
 class PathToString:
     """Path objects cannot be collated in the standard pytorch collate function.
     This transform converts the path to a string.

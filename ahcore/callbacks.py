@@ -23,7 +23,7 @@ from pytorch_lightning.callbacks import Callback
 from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
-from ahcore.transforms.pre_transforms import OneHotEncodeMask
+from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.io import get_cache_dir, get_logger
 from ahcore.utils.manifest import ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
@@ -118,9 +118,7 @@ class _ValidationDataset(Dataset):
             roi_name="roi",
         )
 
-        region = OneHotEncodeMask(index_map=self._data_description.index_map)({"annotation_data": {"mask": region}})[
-            "annotation_data"
-        ]["mask"]
+        region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
 
         return region, prediction, roi[np.newaxis, ...]
 
