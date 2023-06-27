@@ -172,11 +172,8 @@ class AhCoreLightningModule(pl.LightningModule):
         self.log_dict(_metrics, batch_size=batch_size, sync_dist=True, prog_bar=False, on_epoch=True, on_step=False)
 
         if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
-            current_wsi_filename = self._get_current_val_wsi_filename()
             for robustness_metric in self._robustness_metrics:
                 robustness_metric.update(batch)
-            # add the current predictions to the queue, to be processed by the tiff writer process
-            curr_val_dataset, num_grid_tiles = self._get_current_val_dataset(return_num_tiles=True)
 
             # prepare the validation index for the next batch's step
             self._validation_index += batch_size
