@@ -363,7 +363,8 @@ class ComputeWsiMetricsCallback(Callback):
 
         self._logger.info("Metrics: %s", metrics)
 
-        trainer.logger.log_metrics(metrics, step=trainer.global_step)
+        # TODO: Why does this output a list??
+        trainer.logger.log_metrics(metrics[0], step=trainer.global_step)
 
 
 class WriteTiffCallback(Callback):
