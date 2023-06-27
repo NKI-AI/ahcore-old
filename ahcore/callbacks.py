@@ -1,4 +1,5 @@
 # encoding: utf-8
+from __future__ import annotations
 import concurrent.futures
 import hashlib
 import multiprocessing
@@ -30,8 +31,29 @@ from ahcore.writers import H5FileImageWriter
 logger = get_logger(__name__)
 
 
-class ValidationDataset(Dataset):
-    def __init__(self, data_description: DataDescription, native_mpp: float, reader: H5FileImageReader, annotations: WsiAnnotations, mask: WsiAnnotations | None = None, region_size: tuple[int, int]=(1024,1024)):
+class _ValidationDataset(Dataset):
+    """Helper dataset to compute the validation metrics in `ahcore.callbacks.ComputeWsiMetricsCallback`."""
+    def __init__(
+        self,
+        data_description: DataDescription,
+        native_mpp: float,
+        reader: H5FileImageReader,
+        annotations: WsiAnnotations,
+        mask: WsiAnnotations | None = None,
+        region_size: tuple[int, int] = (1024, 1024),
+    ):
+        """
+        Parameters
+        ----------
+        data_description : DataDescription
+        native_mpp : float
+            The actual mpp of the underlying image. Is likely different from the `reader` mpp.
+        reader : H5FileImageReader
+        annotations : WsiAnnotations
+        mask : WsiAnnotations (optional)
+        region_size : tuple[int, int]
+            The region size to use to split up the image into regions.
+        """
         super().__init__()
         self._data_description = data_description
         self._native_mpp = native_mpp
@@ -309,7 +331,7 @@ class ComputeWsiMetricsCallback(Callback):
                 annotations = _parse_annotations(
                     validation_manifest.annotations, base_dir=self._data_description.annotations_dir
                 )
-                dataset_of_validation_image = ValidationDataset(
+                dataset_of_validation_image = _ValidationDataset(
                     data_description=self._data_description,
                     native_mpp=native_mpp,
                     mask=mask,
