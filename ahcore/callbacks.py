@@ -98,8 +98,6 @@ class ValidationDataset(Dataset):
             "annotation_data"
         ]["mask"]
 
-        logger.info(f"Region: {region.sum()}, prediction: {prediction.sum()}")
-
         return region, prediction, roi[np.newaxis, ...]
 
     def __len__(self):
@@ -322,6 +320,8 @@ class ComputeWsiMetricsCallback(Callback):
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
+
+                    logger.info(f"{idx+1} / {len(dataset_of_validation_image)} : Prediction: {_prediction.sum()}, ground truth: {_ground_truth.sum()}, ROI: {np.prod(_roi.shape)/_roi.sum()}")
 
                     self._wsi_metrics.process_batch(
                         predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename)
