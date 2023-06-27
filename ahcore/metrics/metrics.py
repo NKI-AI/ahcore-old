@@ -214,7 +214,7 @@ class WSIDiceMetric(WSIMetric):
             overall_dices[class_idx]["overall_dice"] = (
                 2 * overall_dices[class_idx]["total_intersection"]
             ) / overall_dices[class_idx]["total_cardinality"]
-        return {class_idx: overall_dices[class_idx]["overall_dice"] for class_idx in overall_dices.keys()}
+        return {class_idx: overall_dices[class_idx]["overall_dice"].item() for class_idx in overall_dices.keys()}
 
     def _get_dice_averaged_over_total_wsis(self):
         """
