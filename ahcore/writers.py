@@ -132,8 +132,6 @@ class H5FileImageWriter:
                     self._coordinates_dataset[self._current_index : self._current_index + batch_size] = coordinates
                     self._current_index += batch_size
 
-                logger.info("Done writing tiles for %s", self._filename)
-
         except Exception as e:
             logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
 

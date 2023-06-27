@@ -13,6 +13,7 @@ import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 from dlup import SlideImage
+from ahcore.utils.manifest import DataDescription
 from dlup.annotations import WsiAnnotations
 from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
@@ -30,24 +31,20 @@ logger = get_logger(__name__)
 
 
 class ValidationDataset(Dataset):
-    def __init__(self, data_description, native_mpp: float, mask, annotations, reader: H5FileImageReader):
-
+    def __init__(self, data_description: DataDescription, native_mpp: float, reader: H5FileImageReader, annotations: WsiAnnotations, mask: WsiAnnotations | None = None, region_size: tuple[int, int]=(1024,1024)):
+        super().__init__()
         self._data_description = data_description
         self._native_mpp = native_mpp
-
-        self._scaling = self._native_mpp / reader.get_mpp(1.0)
-
+        self._scaling = self._native_mpp / reader.mpp
         self._reader = reader
+        self._region_size = region_size
 
-        self._region_size = (1024, 1024)
-        # TODO: WsiAnnotations should have a .size property
-        if isinstance(annotations, WsiAnnotations):
-            ann_origin, ann_size = annotations.bounding_box
-        else:
+        if not isinstance(annotations, WsiAnnotations):
             raise NotImplementedError
+        if mask is not None and not isinstance(mask, WsiAnnotations):
+            raise NotImplemented
 
         self._annotations = annotations
-
         self._grid = Grid.from_tiling(
             (0, 0),
             reader.size,
@@ -57,19 +54,16 @@ class ValidationDataset(Dataset):
             order=GridOrder.C,
         )
 
-        self._annotations = annotations
-
-        logger.info("Grid size: %s", len(self._grid))
         self._regions = []
         for coordinates in self._grid:
             if mask is None:
                 self._regions.append(coordinates)
                 continue
 
-            mask_area = mask.read_region(location=coordinates, scaling=self._scaling, size=self._region_size)
+            mask_area = mask.read_region(coordinates, self._scaling, self._region_size)
             if sum([_.area for _ in mask_area]) > 0:
                 self._regions.append(coordinates)
-        logger.info("Number of regions: %s", len(self._regions))
+        logger.info("Number of validation regions: %s", len(self._regions))
 
     def __getitem__(self, idx):
         coordinates = self._regions[idx]
@@ -104,10 +98,12 @@ class ValidationDataset(Dataset):
             "annotation_data"
         ]["mask"]
 
+        logger.info(f"Region: {region.sum()}, prediction: {prediction.sum()}")
+
         return region, prediction, roi[np.newaxis, ...]
 
     def __len__(self):
-        return len(self._grid)
+        return len(self._regions)
 
 
 class _WriterMessage(TypedDict):
@@ -247,7 +243,6 @@ class ComputeWsiMetricsCallback(Callback):
             if isinstance(callback, WriteH5Callback):
                 has_write_h5_callback = True
                 self.__write_h5_callback_index = idx
-                self._logger.info("Found WriteH5Callback at index %s: %s", idx, trainer.callbacks[idx])
                 break
 
         if not has_write_h5_callback:
@@ -322,7 +317,6 @@ class ComputeWsiMetricsCallback(Callback):
                     annotations=annotations,
                     reader=h5reader,
                 )
-                print("Got here!!")
                 for idx in range(len(dataset_of_validation_image)):
                     prediction, ground_truth, roi = dataset_of_validation_image[idx]
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
@@ -369,7 +363,6 @@ class WriteTiffCallback(Callback):
             if isinstance(callback, WriteH5Callback):
                 has_write_h5_callback = True
                 self.__write_h5_callback_index = idx
-                self._logger.info("Found WriteH5Callback at index %s: %s", idx, trainer.callbacks[idx])
                 break
         if not has_write_h5_callback:
             raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")

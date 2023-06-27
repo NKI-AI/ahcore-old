@@ -55,11 +55,22 @@ class H5FileImageReader:
         self._dtype = None
         self._stride = None
 
+    @classmethod
+    def from_file_path(cls, filename, stitching_mode: StitchingMode = StitchingMode.CROP):
+        return cls(filename=filename, stitching_mode=stitching_mode)
+
     @property
-    def size(self):
+    def size(self) -> tuple[int, int]:
         return self._size
 
-    def get_mpp(self, scaling):
+    @property
+    def mpp(self) -> float:
+        return self._mpp
+
+    def get_mpp(self, scaling: float | None) -> float:
+        if scaling is None:
+            return self.mpp
+
         return self._mpp / scaling
 
     def get_scaling(self, mpp: float | None) -> float:
