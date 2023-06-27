@@ -133,19 +133,6 @@ class AhCoreLightningModule(pl.LightningModule):
         metrics = {f"{self.STAGE_MAP[stage]}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
-    def _process_wsi_metrics(
-        self, prediction: torch.Tensor, target: torch.Tensor, wsi_name: str, roi: torch.Tensor | None
-    ) -> None:
-        if not self._wsi_metrics:
-            return None
-        self._wsi_metrics.process_batch(prediction, target, roi=roi, wsi_name=wsi_name)
-
-    def _compute_wsi_metrics(self) -> dict[str, torch.Tensor]:
-        if not self._wsi_metrics:
-            return {}
-        metrics = self._wsi_metrics.get_average_score()
-        return metrics
-
     def do_step(self, batch, batch_idx: int, stage: TrainerFn):
         if self._augmentations and stage in self._augmentations:
             batch = self._augmentations[stage](batch)
@@ -186,7 +173,6 @@ class AhCoreLightningModule(pl.LightningModule):
 
         if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
             current_wsi_filename = self._get_current_val_wsi_filename()
-            self._process_wsi_metrics(_prediction, _target, str(current_wsi_filename), roi)
             for robustness_metric in self._robustness_metrics:
                 robustness_metric.update(batch)
             # add the current predictions to the queue, to be processed by the tiff writer process
@@ -232,13 +218,6 @@ class AhCoreLightningModule(pl.LightningModule):
             for robustness_metric in self._robustness_metrics:
                 self.log_dict(robustness_metric.compute(), sync_dist=True, prog_bar=True)
                 robustness_metric.reset()
-
-        # Log the WSI level metrics
-        avg_scores = self._compute_wsi_metrics()
-        self.log_dict(avg_scores, prog_bar=True, sync_dist=True)
-        # Reset the metric container for the next iteration
-        self._wsi_metrics.reset()
-        self._written_val_tiffs = 0  # Reset the written tiffs counter
 
     def on_predict_start(self) -> None:
         """Check that the metadata exists (necessary for saving output) exists before going through the WSI"""

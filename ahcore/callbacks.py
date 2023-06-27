@@ -317,7 +317,7 @@ class ComputeWsiMetricsCallback(Callback):
                     self._logger.error("%r generated an exception: %s" % (filename, exc))
                 else:
                     metrics.append(metric)
-                    self._logger.info("Metric for %r is %f" % (filename, metric))
+                    self._logger.info("Metric for %r is %s" % (filename, metric))
         return metrics
 
     def compute_metrics_for_case(self, filename):
@@ -349,15 +349,14 @@ class ComputeWsiMetricsCallback(Callback):
                     )
 
                 metrics = self._wsi_metrics.get_average_score()
-                self._wsi_metrics.reset()
-
             return metrics
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
         self._logger.info("Computing metrics for %s predictions", len(self._filenames))
 
-        self._metrics = self.compute_metrics()
+        metrics = self.compute_metrics()
+        self._wsi_metrics.reset()
 
         trainer.logger.log_metrics({"custom_metric": 1.0}, step=trainer.global_step)
 
