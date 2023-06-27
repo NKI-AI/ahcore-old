@@ -364,7 +364,10 @@ class ComputeWsiMetricsCallback(Callback):
         self._logger.info("Metrics: %s", metrics)
 
         # TODO: Why does this output a list??
+        pl_module.log_dict(metrics[0], prog_bar=True)
+        # TODO: Which is needed??
         trainer.logger.log_metrics(metrics[0], step=trainer.global_step)
+
 
 
 class WriteTiffCallback(Callback):
