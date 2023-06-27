@@ -7,7 +7,7 @@ import queue
 import threading
 from pathlib import Path
 from threading import Semaphore
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -29,6 +29,12 @@ from ahcore.utils.manifest import ImageManifest, _ImageBackends, _parse_annotati
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
+
+_TORCH: str = "torch"
+_NUMPY: str = "numpy"
+_TILE_OPERATION = {
+    "argmax": {_TORCH: torch.argmax, _NUMPY: np.argmax}
+}
 
 
 class _ValidationDataset(Dataset):
@@ -239,10 +245,11 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_threads=10):
+    def __init__(self, max_threads=10, tile_operation: Optional[str] = "argmax"):
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
+        self._tile_operation = tile_operation
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
@@ -336,9 +343,9 @@ class ComputeWsiMetricsCallback(Callback):
                 )
                 for idx in range(len(dataset_of_validation_image)):
                     prediction, ground_truth, roi = dataset_of_validation_image[idx]
-                    _prediction = torch.from_numpy(prediction).unsqueeze(0)
-                    _prediction = torch.argmax(_prediction, dim=1)
+                    _prediction = _TILE_OPERATION[self._tile_operation][_NUMPY](prediction, 1)
                     _prediction = one_hot_encoding(index_map=self._data_description.index_map, mask=_prediction)
+                    _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
 

@@ -157,7 +157,7 @@ class OneHotEncodeMask:
         return sample
 
 
-def one_hot_encoding(index_map: dict[str, int], mask : np.ndarray) -> np.ndarray:
+def one_hot_encoding(index_map: dict[str, int], mask: np.ndarray) -> np.ndarray:
     """
     functional interface to convert labels/predictions into one-hot codes
 
