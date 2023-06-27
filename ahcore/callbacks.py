@@ -61,14 +61,20 @@ class ValidationDataset(Dataset):
 
         self._annotations = annotations
 
-        # # We need to filter the grid, perhaps check how this is done in dlup.
-        # self._regions = []
-        # for grid_elem in grid:
-        #     coordinates = grid_elem * self._scaling
-        #     reader.read_region_raw(location=coordinates, size=(1024, 1024))
+        logger.info("Grid size: %s", len(self._grid))
+        self._regions = []
+        for coordinates in self._grid:
+            if mask is None:
+                self._regions.append(coordinates)
+                continue
+
+            mask_area = mask.read_region(location=coordinates, scaling=self._scaling, size=self._region_size)
+            if sum([_.area for _ in mask_area]) > 0:
+                self._regions.append(coordinates)
+        logger.info("Number of regions: %s", len(self._regions))
 
     def __getitem__(self, idx):
-        coordinates = self._grid[idx]
+        coordinates = self._regions[idx]
 
         x, y = coordinates
         width, height = self._region_size
