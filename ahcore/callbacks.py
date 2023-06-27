@@ -343,8 +343,6 @@ class ComputeWsiMetricsCallback(Callback):
                 )
                 for idx in range(len(dataset_of_validation_image)):
                     prediction, ground_truth, roi = dataset_of_validation_image[idx]
-                    _prediction = _TILE_OPERATION[self._tile_operation][_NUMPY](prediction, 1)
-                    _prediction = one_hot_encoding(index_map=self._data_description.index_map, mask=_prediction)
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
