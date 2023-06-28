@@ -4,6 +4,7 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Iterator
 
 import pytorch_lightning as pl
@@ -57,6 +58,7 @@ class DlupDataModule(pl.LightningDataModule):
             Whether to use cuda pin workers. Check the pytorch documentation for more information.
         """
         super().__init__()
+        self._logger = get_logger(fullname(self))
 
         self.save_hyperparameters(
             logger=True,
@@ -99,7 +101,7 @@ class DlupDataModule(pl.LightningDataModule):
         self._already_called: dict[str, bool] = {"fit": False, "validate": False, "test": False, "predict": False}
 
         for field in self._manifests._fields:
-            logger.info("Number of images for stage %s: %s", field, getattr(self._manifests, field).__len__())
+            self._logger.info("Number of images for stage %s: %s", field, getattr(self._manifests, field).__len__())
 
         self._num_classes = data_description.num_classes
 
@@ -136,7 +138,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         if stage and self._already_called[stage]:
             return
-        logger.info("Constructing dataset iterator for stage %s...", stage)
+        self._logger.info("Constructing dataset iterator for stage %s", stage)
         manifests = getattr(self._manifests, stage)
         if not manifests:
             setattr(self, f"_{stage}_data_iterator", None)
@@ -166,7 +168,7 @@ class DlupDataModule(pl.LightningDataModule):
                 curr_mpp = dataset.slide_image.mpp
                 self._mpps[filename] = curr_mpp
 
-                logger.info(
+                self._logger.info(
                     "Added dataset for %s with length %s (original mpp=%s).",
                     image_manifest.identifier,
                     len(dataset),
@@ -175,7 +177,6 @@ class DlupDataModule(pl.LightningDataModule):
                 yield dataset
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
-        # Let's trigger the creation of a the data loader
 
     def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn | None = None):
         if not data_iterator:
@@ -217,7 +218,7 @@ class DlupDataModule(pl.LightningDataModule):
         filename = path / f"{self.uuid}.pkl"
         if not filename.is_file():
             path.mkdir(exist_ok=True, parents=True)
-            logger.info("Caching %s", name)
+            self._logger.info("Caching %s", name)
 
             obj = func(*args, **kwargs)
 
@@ -225,7 +226,7 @@ class DlupDataModule(pl.LightningDataModule):
                 torch.save(obj, file)
         else:
             with open(filename, "rb") as file:
-                logger.info("Loading %s from cache %s file", name, filename)
+                self._logger.info("Loading %s from cache %s file", name, filename)
                 obj = torch.load(file)
 
         return obj
