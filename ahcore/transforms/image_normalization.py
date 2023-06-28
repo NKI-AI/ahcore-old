@@ -429,7 +429,10 @@ class MacenkoNormalizer(nn.Module):
             else:
                 # Now we need to compute it.
                 # TODO: Where can we get the overwrite mpp from?
-                with SlideImage.from_file_path(filename) as slide_image:
+                kwargs = {}
+                if Path(filename) in self._overwrite_mpp:
+                    kwargs["overwrite_mpp"] = self._overwrite_mpp[Path(filename)]
+                with SlideImage.from_file_path(filename, **kwargs) as slide_image:
                     logger.info("Computing Macenko staining vector for %s", filename)
                     stain_computer = MacenkoNormalizer(return_stains=False)
 
