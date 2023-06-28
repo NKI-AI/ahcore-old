@@ -358,9 +358,10 @@ class ComputeWsiMetricsCallback(Callback):
         metrics = self._wsi_metrics.get_average_score()
         self._wsi_metrics.reset()
 
-        self._logger.info("Metrics: %s", metrics)
+        self._logger.debug("Metrics: %s", metrics)
         pl_module.log_dict(metrics, prog_bar=True)
-        trainer.logger.log_metrics(metrics, step=trainer.global_step)
+        # TODO(jt): I think this is not strictly required.
+        # trainer.logger.log_metrics(metrics, step=trainer.global_step)
 
 
 class WriteTiffCallback(Callback):
