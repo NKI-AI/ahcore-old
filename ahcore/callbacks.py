@@ -341,13 +341,13 @@ class ComputeWsiMetricsCallback(Callback):
                     reader=h5reader,
                 )
                 for idx in range(len(dataset_of_validation_image)):
-                    prediction, ground_truth, roi = dataset_of_validation_image[idx]
+                    ground_truth, prediction, roi = dataset_of_validation_image[idx]
                     _prediction = torch.from_numpy(prediction).unsqueeze(0)
                     _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
                     _roi = torch.from_numpy(roi).unsqueeze(0)
 
                     self._wsi_metrics.process_batch(
-                        predictions=_prediction, target=_ground_truth, roi=_roi, wsi_name=str(filename)
+                        predictions=_prediction.float(), target=_ground_truth, roi=_roi, wsi_name=str(filename)
                     )
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
