@@ -192,7 +192,7 @@ class H5FileImageReader:
 
         if self._stitching_mode == StitchingMode.AVERAGE:
             divisor_array = np.zeros((h, w), dtype=np.uint8)
-        stitched_image = np.zeros((self._num_channels, h, w), dtype=np.uint8)
+        stitched_image = np.zeros((self._num_channels, h, w), dtype=self._dtype)
         for i in range(start_row, end_row):
             for j in range(start_col, end_col):
                 tile_idx = (i * total_cols) + j
@@ -238,7 +238,7 @@ class H5FileImageReader:
                     raise ValueError("Unsupported stitching mode")
 
         if self._stitching_mode == StitchingMode.AVERAGE:
-            stitched_image = np.round(stitched_image / divisor_array[..., np.newaxis], 0).astype(np.uint8)
+            stitched_image = (stitched_image / divisor_array[..., np.newaxis]).astype(np.float)
 
         return stitched_image
 
