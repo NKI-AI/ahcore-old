@@ -103,13 +103,16 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._num_classes = data_description.num_classes
 
-        self._mpps = {}
-
-        # Setup the datasets, especially the validation one as this populates the .mpps property.
+        # This has the overwriting
+        self._overwrite_mpp = {}
+        for manifest_name in ["fit", "validate", "test", "predict"]:
+            for manifest in getattr(self._manifests, manifest_name):
+                if manifest.mpp:
+                    self._overwrite_mpp[data_description.data_dir / manifest.image[0]] = manifest.mpp
 
     @property
-    def mpps(self):
-        return self._mpps
+    def overwrite_mpp(self):
+        return self._overwrite_mpp
 
     @property
     def fit_manifest(self):

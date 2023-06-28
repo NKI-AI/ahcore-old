@@ -82,7 +82,7 @@ def train(config: DictConfig) -> torch.Tensor | None:
                 raise NotImplementedError(f"No augmentations target found in <{config.augmentations[stage]}>")
             logger.info(f"Instantiating {stage} augmentations <{config.augmentations[stage]._target_}>")  # noqa
             augmentations[stage] = hydra.utils.instantiate(
-                config.augmentations[stage], data_description=data_description
+                config.augmentations[stage], data_description=data_description, data_module=datamodule,
             )
 
     if not config.losses.get("_target_"):

@@ -16,6 +16,8 @@ from torch import nn
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 
+import pytorch_lightning as pl
+
 logger = get_logger(__name__)
 
 
@@ -137,6 +139,7 @@ class AugmentationFactory(nn.Module):
     def __init__(
         self,
         data_description: DataDescription,
+        data_module,
         initial_transforms: list | None = None,
         random_apply_intensity: int | bool | ListConfig = False,
         random_apply_weights_intensity: list[float] | None = None,
@@ -156,13 +159,13 @@ class AugmentationFactory(nn.Module):
         # Initial transforms will be applied sequentially
         if initial_transforms:
             for transform in initial_transforms:
-                logger.info(f"Using initial transform {transform}")
+                logger.info("Using initial transform %s", transform)
         self._initial_transforms = nn.ModuleList(initial_transforms)
 
         # Intensity augmentations will be selected in random order
         if intensity_augmentations:
             for transform in intensity_augmentations:
-                logger.info(f"Adding intensity augmentation {transform}")
+                logger.info("Adding intensity augmentation %s", transform)
 
         self._intensity_augmentations = None
         if intensity_augmentations:
@@ -177,7 +180,7 @@ class AugmentationFactory(nn.Module):
         # Geometric augmentations will be selected in random order.
         if geometric_augmentations:
             for transform in geometric_augmentations:
-                logger.info(f"Adding geometric augmentation {transform}")
+                logger.info("Adding geometric augmentation %s", transform)
 
         self._geometric_augmentations = None
         if geometric_augmentations:
@@ -193,13 +196,14 @@ class AugmentationFactory(nn.Module):
         # Final transforms will be applied sequentially
         if final_transforms:
             for transform in final_transforms:
-                logger.info(f"Using final transform {transform}")
+                logger.info("Using final transform %s", transform)
         self._final_transforms = nn.ModuleList(final_transforms)
+        self._overwrite_mpp = data_module.overwrite_mpp
 
     def forward(self, sample):
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
         if self._initial_transforms:
-            kwargs = {"data_keys": self._data_keys, "filenames": sample["path"]}
+            kwargs = {"data_keys": self._data_keys, "filenames": sample["path"], "overwrite_mpp": self._overwrite_mpp}
             for transform in self._initial_transforms:
                 output_data = transform(*output_data, **kwargs)
 
