@@ -191,6 +191,9 @@ def log_hyperparameters(
 
 
 def fullname(cls: Any) -> str:
+    if not isinstance(cls, type):  # if cls is an instance, get its class
+        cls = type(cls)
+
     module = cls.__module__
     if module is None or module == str.__class__.__module__:  # don't want to return 'builtins'
         return cls.__name__
