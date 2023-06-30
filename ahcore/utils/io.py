@@ -12,6 +12,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
+from types import FunctionType
 from typing import Any, Sequence
 
 import pytorch_lightning as pl
@@ -190,9 +191,11 @@ def log_hyperparameters(
     trainer.logger.log_hyperparams(hparams)
 
 
-def fullname(cls: Any) -> str:
-    if not isinstance(cls, type):  # if cls is an instance, get its class
-        cls = type(cls)
+def fullname(obj: Any) -> str:
+    if isinstance(obj, type) or isinstance(obj, FunctionType):
+        cls = obj
+    else:  # if obj is an instance, get its class
+        cls = type(obj)
 
     module = cls.__module__
     if module is None or module == str.__class__.__module__:  # don't want to return 'builtins'
