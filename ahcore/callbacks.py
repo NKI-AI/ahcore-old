@@ -31,10 +31,6 @@ from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
 
-_TORCH: str = "torch"
-_NUMPY: str = "numpy"
-_TILE_OPERATION = {"argmax": {_TORCH: torch.argmax, _NUMPY: np.argmax}}
-
 
 class _ValidationDataset(Dataset):
     """Helper dataset to compute the validation metrics in `ahcore.callbacks.ComputeWsiMetricsCallback`."""
