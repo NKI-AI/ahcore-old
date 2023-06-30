@@ -1,5 +1,6 @@
 # encoding: utf-8
 from __future__ import annotations
+
 import concurrent.futures
 import hashlib
 import multiprocessing
@@ -7,14 +8,14 @@ import queue
 import threading
 from pathlib import Path
 from threading import Semaphore
-from typing import TypedDict, Optional
+from typing import Optional, TypedDict
 
 import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 from dlup import SlideImage
-from ahcore.utils.manifest import DataDescription
+from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
 from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
@@ -25,20 +26,19 @@ from torch.utils.data import Dataset
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.io import get_cache_dir, get_logger
-from ahcore.utils.manifest import ImageManifest, _ImageBackends, _parse_annotations
+from ahcore.utils.manifest import DataDescription, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
 
 _TORCH: str = "torch"
 _NUMPY: str = "numpy"
-_TILE_OPERATION = {
-    "argmax": {_TORCH: torch.argmax, _NUMPY: np.argmax}
-}
+_TILE_OPERATION = {"argmax": {_TORCH: torch.argmax, _NUMPY: np.argmax}}
 
 
 class _ValidationDataset(Dataset):
     """Helper dataset to compute the validation metrics in `ahcore.callbacks.ComputeWsiMetricsCallback`."""
+
     def __init__(
         self,
         data_description: DataDescription,
@@ -222,6 +222,7 @@ class WriteH5Callback(Callback):
             self._current_filename = filename
 
         prediction = batch["prediction"].detach().cpu().numpy()
+        # prediction = batch["target"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
@@ -353,7 +354,6 @@ class ComputeWsiMetricsCallback(Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
-
         self.compute_metrics()
         metrics = self._wsi_metrics.get_average_score()
         self._wsi_metrics.reset()
@@ -376,7 +376,7 @@ class WriteTiffCallback(Callback):
         self._tile_size = (1024, 1024)
 
         # TODO: Handle tile operation such that we avoid repetitions.
-        self._tile_process_function = None  # function that is applied to the tile.
+        self._tile_process_function = lambda x: np.argmax(x, axis=0)  # function that is applied to the tile.
         # TODO: Map H5 to a different filename
         self._filename_mapping = None  # Function that maps h5 name to something else
 
@@ -403,7 +403,14 @@ class WriteTiffCallback(Callback):
 
     def _write_tiff(self, filename):
         with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
-            writer = TifffileImageWriter(self._filename_mapping(filename), tile_size=self._tile_size)
+            writer = TifffileImageWriter(
+                self._filename_mapping(filename),
+                size=h5_reader.size,
+                mpp=h5_reader.mpp,
+                tile_size=self._tile_size,
+                pyramid=True,
+                interpolator=Resampling.NEAREST,
+            )
             writer.from_tiles_iterator(self._iterator_from_reader(h5_reader))
 
     def _iterator_from_reader(self, h5_reader: H5FileImageReader):
