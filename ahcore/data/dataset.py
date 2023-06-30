@@ -4,7 +4,6 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, Callable, Iterator
 
 import pytorch_lightning as pl
@@ -17,8 +16,6 @@ import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
-
-logger = get_logger(__name__)
 
 
 class DlupDataModule(pl.LightningDataModule):

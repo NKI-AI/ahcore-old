@@ -16,8 +16,6 @@ from torch import nn
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 
-import pytorch_lightning as pl
-
 logger = get_logger(__name__)
 
 

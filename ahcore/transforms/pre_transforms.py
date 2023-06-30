@@ -177,7 +177,7 @@ def one_hot_encoding(index_map: dict[str, int], mask: np.ndarray) -> np.ndarray:
     largest_index = max(index_map.values())
     new_mask = np.zeros((largest_index + 1, *mask.shape), dtype=np.float32)
     for idx in range(largest_index + 1):
-        new_mask[idx] = (mask == idx)
+        new_mask[idx] = mask == idx
     return new_mask
 
 
