@@ -9,6 +9,10 @@ import numpy.typing as npt
 from dlup.types import GenericNumber
 from scipy.ndimage import map_coordinates
 
+from ahcore.utils.io import get_logger
+
+logger = get_logger(__name__)
+
 
 class StitchingMode(Enum):
     CROP = 0
@@ -21,9 +25,14 @@ class PasteMode(Enum):
     ADD = 1
 
 
+# def crop_to_bbox(array, bbox):
+#     (x, y), (h, w) = bbox
+#     return array[y : y + h, x : x + w]
+
+
 def crop_to_bbox(array, bbox):
-    (x, y), (h, w) = bbox
-    return array[y : y + h, x : x + w]
+    (start_x, start_y), (width, height) = bbox
+    return array[:, start_y : start_y + height, start_x : start_x + width]
 
 
 def paste_region(array, region, location, paste_mode=PasteMode.OVERWRITE):
@@ -183,6 +192,7 @@ class H5FileImageReader:
         x, y = location
         w, h = size
         if x < 0 or y < 0 or x + w > self._size[0] or y + h > self._size[1]:
+            logger.error(f"Requested region is out of bounds: {location}, {self._size}")
             raise ValueError("Requested region is out of bounds")
 
         start_row = y // self._stride[1]
@@ -219,7 +229,7 @@ class H5FileImageReader:
                     crop_start_x = img_start_x - start_x
                     crop_end_x = img_end_x - start_x
 
-                    bbox = (crop_start_y, crop_start_x), (crop_end_y - crop_start_y, crop_end_x - crop_start_x)
+                    bbox = (crop_start_x, crop_start_y), (crop_end_x - crop_start_x, crop_end_y - crop_start_y)
                     cropped_tile = crop_to_bbox(tile, bbox)
                     stitched_image[:, img_start_y:img_end_y, img_start_x:img_end_x] = cropped_tile
 

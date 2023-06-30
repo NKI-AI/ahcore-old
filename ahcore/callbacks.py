@@ -40,7 +40,7 @@ class _ValidationDataset(Dataset):
         data_description: DataDescription,
         native_mpp: float,
         reader: H5FileImageReader,
-        annotations: WsiAnnotations,
+        annotations: WsiAnnotations | None,
         mask: WsiAnnotations | None = None,
         region_size: tuple[int, int] = (1024, 1024),
     ):
@@ -65,7 +65,7 @@ class _ValidationDataset(Dataset):
 
         self._logger = get_logger(type(self).__name__)
 
-        if not isinstance(annotations, WsiAnnotations):
+        if annotations is not None and not isinstance(annotations, WsiAnnotations):
             raise NotImplementedError
         if mask is not None and not isinstance(mask, WsiAnnotations):
             raise NotImplemented
@@ -102,26 +102,35 @@ class _ValidationDataset(Dataset):
             # Calculate new region size
             new_width = min(width, self._reader.size[0] - x)
             new_height = min(height, self._reader.size[1] - y)
-            clipped_region = self._reader.read_region_raw((x, y), (new_height, new_width))
+            clipped_region = self._reader.read_region_raw((x, y), (new_width, new_height))
+
             prediction = np.zeros((clipped_region.shape[0], *self._region_size), dtype=clipped_region.dtype)
-            prediction[:new_height, :new_width] = clipped_region
+            prediction[:, :new_height, :new_width] = clipped_region
+
         else:
             prediction = self._reader.read_region_raw(coordinates, self._region_size)
-        ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
 
-        ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": ground_truth})[
-            "annotations"
-        ]
-        points, region, roi = convert_annotations(
-            ground_truth,
-            self._region_size,
-            index_map=self._data_description.index_map,
-            roi_name="roi",
-        )
+        if self._annotations is not None:
 
-        region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
+            ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
 
-        return region, prediction, roi[np.newaxis, ...]
+            ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)(
+                {"annotations": ground_truth}
+            )["annotations"]
+            points, region, roi = convert_annotations(
+                ground_truth,
+                self._region_size,
+                index_map=self._data_description.index_map,
+                roi_name="roi",
+            )
+
+            region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
+            roi = roi[np.newaxis, ...]
+        else:
+            region = None
+            roi = None
+
+        return region, prediction, roi
 
     def __len__(self):
         return len(self._regions)
@@ -183,7 +192,7 @@ class WriteH5Callback(Callback):
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
             output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            self._logger.debug("%s -> %s", filename, output_filename)
+            self._logger.info("%s -> %s", filename, output_filename)
             if self._current_filename is not None:
                 self._writers[self._current_filename]["queue"].put(None)  # Add None to writer's queue
                 self._writers[self._current_filename]["thread"].join()
@@ -217,8 +226,8 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
-        prediction = batch["prediction"].detach().cpu().numpy()
-        # prediction = batch["target"].detach().cpu().numpy()
+        # prediction = batch["prediction"].detach().cpu().numpy()
+        prediction = batch["target"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
@@ -360,6 +369,37 @@ class ComputeWsiMetricsCallback(Callback):
         # trainer.logger.log_metrics(metrics, step=trainer.global_step)
 
 
+# Separate because this cannot be pickled.
+def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_function):
+
+    validation_dataset = _ValidationDataset(
+        None, native_mpp=h5_reader.mpp, reader=h5_reader, annotations=None, mask=None, region_size=(1024, 1024)
+    )
+
+    # TODO Make an iterator of validatipon_dataset.
+    for idx in range(len(validation_dataset)):
+        _, region, _ = validation_dataset[idx]
+        yield region if tile_process_function is None else tile_process_function(region)
+
+
+def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reader):
+    logger.info("Writing TIFF %s", filename.with_suffix(".tiff"))
+    with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
+        writer = TifffileImageWriter(
+            filename.with_suffix(".tiff"),
+            size=h5_reader.size,
+            mpp=h5_reader.mpp,
+            tile_size=tile_size,
+            pyramid=True,
+            interpolator=Resampling.NEAREST,
+        )
+        writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
+
+
+def tile_process_function(x):
+    return np.argmax(x, axis=0).astype(int)
+
+
 class WriteTiffCallback(Callback):
     def __init__(self, max_concurrent_writers: int):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
@@ -372,11 +412,10 @@ class WriteTiffCallback(Callback):
         self._tile_size = (1024, 1024)
 
         # TODO: Handle tile operation such that we avoid repetitions.
-        self._tile_process_function = lambda x: np.argmax(x, axis=0)  # function that is applied to the tile.
-        # TODO: Map H5 to a different filename
-        self._filename_mapping = None  # Function that maps h5 name to something else
 
-        self._filenames = []  # This has all the h5 files
+        self._tile_process_function = tile_process_function  # function that is applied to the tile.
+
+        self._filenames = {}  # This has all the h5 files
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
         has_write_h5_callback = None
@@ -388,37 +427,23 @@ class WriteTiffCallback(Callback):
         if not has_write_h5_callback:
             raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")
 
+    def on_validation_batch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
+        filename = Path(batch["path"][0])  # Filenames are constant across the batch.
+        if filename not in self._filenames:
+            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
+            self._filenames[filename] = output_filename
+
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        self._logger.info("Validation epoch end reached. Filenames: %s", self._filenames)
         results = []
-        for filename in self._filenames:
-            result = self._pool.apply_async(self._write_tiff, (filename,))
+        for image_filename, h5_filename in self._filenames.items():
+            self._logger.info("Writing %s to %s", h5_filename, image_filename.with_suffix(".tiff"))
+            result = self._pool.apply_async(
+                _write_tiff, (h5_filename, self._tile_size, self._tile_process_function, _iterator_from_reader)
+            )
             results.append(result)
 
         for result in results:
             result.get()  # Wait for the process to complete.
-
-    def _write_tiff(self, filename):
-        with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
-            writer = TifffileImageWriter(
-                self._filename_mapping(filename),
-                size=h5_reader.size,
-                mpp=h5_reader.mpp,
-                tile_size=self._tile_size,
-                pyramid=True,
-                interpolator=Resampling.NEAREST,
-            )
-            writer.from_tiles_iterator(self._iterator_from_reader(h5_reader))
-
-    def _iterator_from_reader(self, h5_reader: H5FileImageReader):
-        grid = Grid.from_tiling(
-            (0, 0),
-            h5_reader.size,
-            tile_size=self._tile_size,
-            tile_overlap=(0, 0),
-            mode=TilingMode.overflow,
-            order=GridOrder.C,
-        )
-
-        for location in grid:
-            region = h5_reader.read_region(location, self._tile_size)
-            yield region if self._tile_process_function is None else self._tile_process_function(region)
