@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Semaphore
 from typing import Optional, TypedDict
 
-import loggingb
+import logging
 import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
