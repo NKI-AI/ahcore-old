@@ -163,12 +163,12 @@ class DlupDataModule(pl.LightningDataModule):
                 # Each time we see a dataset we find its mpp
                 filename = self.data_description.data_dir / image_manifest.image[0]
                 curr_mpp = dataset.slide_image.mpp
-                self._mpps[filename] = curr_mpp
 
                 self._logger.info(
-                    "Added dataset for %s with length %s (original mpp=%s).",
+                    "Added dataset for %s with length %s (filename=%s, original mpp=%s).",
                     image_manifest.identifier,
                     len(dataset),
+                    filename,
                     curr_mpp,
                 )
                 yield dataset
