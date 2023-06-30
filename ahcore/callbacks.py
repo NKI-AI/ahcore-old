@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Semaphore
 from typing import Optional, TypedDict
 
+import loggingb
 import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
@@ -30,6 +31,8 @@ from ahcore.utils.manifest import DataDescription, ImageManifest, _ImageBackends
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
+
+logging.getLogger("pyvips").setLevel(logging.ERROR)
 
 
 class _ValidationDataset(Dataset):
@@ -397,7 +400,7 @@ def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reade
 
 
 def tile_process_function(x):
-    return np.argmax(x, axis=0).astype(int)
+    return np.argmax(x, axis=0).astype(np.uint8)
 
 
 class WriteTiffCallback(Callback):
@@ -436,10 +439,9 @@ class WriteTiffCallback(Callback):
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        self._logger.info("Validation epoch end reached. Filenames: %s", self._filenames)
         results = []
         for image_filename, h5_filename in self._filenames.items():
-            self._logger.info("Writing %s to %s", h5_filename, image_filename.with_suffix(".tiff"))
+            self._logger.info("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             result = self._pool.apply_async(
                 _write_tiff, (h5_filename, self._tile_size, self._tile_process_function, _iterator_from_reader)
             )
