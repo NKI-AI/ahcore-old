@@ -160,8 +160,8 @@ def _get_output_filename(input_path: Path, epoch: None | int | str = None) -> Pa
 
     # Return the hashed filename with the new extension
     if epoch is not None:
-        return get_cache_dir() / "h5s" / f"epoch_{epoch}" / f"{hex_dig}.h5"
-    return get_cache_dir() / "h5s" / f"{hex_dig}.h5"
+        return get_cache_dir() / "outputs" / f"epoch_{epoch}" / f"{hex_dig}.h5"
+    return get_cache_dir() / "outputs" / f"{hex_dig}.h5"
 
 
 class WriteH5Callback(Callback):
