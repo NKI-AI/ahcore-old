@@ -319,7 +319,7 @@ class WriteH5Callback(Callback):
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
             output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            with open(get_cache_dir() / f"epoch_{pl_module.current_epoch}" / "image_h5_link.txt", "a") as file:
+            with open(get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_h5_link.txt", "a") as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
@@ -566,7 +566,7 @@ class WriteTiffCallback(Callback):
         results = []
         for image_filename, h5_filename in self._filenames.items():
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
-            with open(get_cache_dir() / f"epoch_{pl_module.current_epoch}" / "image_tiff_link.txt", "a") as file:
+            with open(get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_tiff_link.txt", "a") as file:
                 file.write(f"{image_filename},{h5_filename}\n")
             if not h5_filename.exists():
                 self._logger.warning("H5 file %s does not exist. Skipping", h5_filename)
