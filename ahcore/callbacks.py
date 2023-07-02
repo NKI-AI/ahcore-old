@@ -35,12 +35,12 @@ logger = get_logger(__name__)
 logging.getLogger("pyvips").setLevel(logging.ERROR)
 
 
-class _ValidationDataset(Dataset):
+class _ValidationDatasetOld(Dataset):
     """Helper dataset to compute the validation metrics in `ahcore.callbacks.ComputeWsiMetricsCallback`."""
 
     def __init__(
         self,
-        data_description: DataDescription,
+        data_description: Optional[DataDescription],
         native_mpp: float,
         reader: H5FileImageReader,
         annotations: WsiAnnotations | None,
@@ -114,7 +114,6 @@ class _ValidationDataset(Dataset):
             prediction = self._reader.read_region_raw(coordinates, self._region_size)
 
         if self._annotations is not None:
-
             ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
 
             ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)(
@@ -137,6 +136,131 @@ class _ValidationDataset(Dataset):
 
     def __len__(self):
         return len(self._regions)
+
+
+class _ValidationDataset(Dataset):
+    """Helper dataset to compute the validation metrics."""
+
+    def __init__(
+        self,
+        data_description: Optional[DataDescription],
+        native_mpp: float,
+        reader: H5FileImageReader,
+        annotations: Optional[WsiAnnotations] = None,
+        mask: Optional[WsiAnnotations] = None,
+        region_size: tuple[int, int] = (1024, 1024),
+    ):
+        """
+        Parameters
+        ----------
+        data_description : DataDescription
+        native_mpp : float
+            The actual mpp of the underlying image.
+        reader : H5FileImageReader
+        annotations : WsiAnnotations
+        mask : WsiAnnotations
+        region_size : Tuple[int, int]
+            The region size to use to split up the image into regions.
+        """
+        super().__init__()
+        self._data_description = data_description
+        self._native_mpp = native_mpp
+        self._scaling = self._native_mpp / reader.mpp
+        self._reader = reader
+        self._region_size = region_size
+        self._logger = get_logger(type(self).__name__)
+
+        self._annotations = self._validate_annotations(annotations)
+        self._mask = self._validate_annotations(mask)
+
+        self._grid = Grid.from_tiling(
+            (0, 0),
+            reader.size,
+            tile_size=self._region_size,
+            tile_overlap=(0, 0),
+            mode=TilingMode.overflow,
+            order=GridOrder.C,
+        )
+
+        self._regions = self._generate_regions()
+        self._logger.debug(f"Number of validation regions: {len(self._regions)}")
+
+    def _validate_annotations(self, annotations: Optional[WsiAnnotations]) -> Optional[WsiAnnotations]:
+        if annotations is not None and self._data_description is None:
+            raise ValueError("Annotations are provided but no data description is given. This is required to map the"
+                             "labels to indices.")
+
+        if annotations is not None and not isinstance(annotations, WsiAnnotations):
+            raise NotImplementedError
+        return annotations
+
+    def _generate_regions(self):
+        regions = []
+        for coordinates in self._grid:
+            if self._mask is None or self._is_masked(coordinates):
+                regions.append(coordinates)
+        return regions
+
+    def _is_masked(self, coordinates):
+        mask_area = self._mask.read_region(coordinates, self._scaling, self._region_size)
+        return sum(_.area for _ in mask_area) > 0
+
+    def __getitem__(self, idx):
+        sample = {}
+        coordinates = self._regions[idx]
+
+        sample["prediction"] = self._get_h5_region(coordinates)
+
+        if self._annotations is not None:
+            target, roi = self._get_annotation_data(coordinates)
+            sample["roi"] = roi
+            sample["target"] = target
+
+        return sample
+
+    def _get_h5_region(self, coordinates):
+        x, y = coordinates
+        width, height = self._region_size
+
+        if x + width > self._reader.size[0] or y + height > self._reader.size[1]:
+            region = self._read_and_pad_region(coordinates)
+        else:
+            region = self._reader.read_region_raw(coordinates, self._region_size)
+        return region
+
+    def _read_and_pad_region(self, coordinates):
+        x, y = coordinates
+        width, height = self._region_size
+        new_width = min(width, self._reader.size[0] - x)
+        new_height = min(height, self._reader.size[1] - y)
+        clipped_region = self._reader.read_region_raw((x, y), (new_width, new_height))
+
+        prediction = np.zeros((clipped_region.shape[0], *self._region_size), dtype=clipped_region.dtype)
+        prediction[:, :new_height, :new_width] = clipped_region
+        return prediction
+
+    def _get_annotation_data(self, coordinates):
+        annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
+        annotations = RenameLabels(remap_labels=self._data_description.remap_labels)(
+            {"annotations": annotations}
+        )["annotations"]
+
+        points, region, roi = convert_annotations(
+            annotations,
+            self._region_size,
+            index_map=self._data_description.index_map,
+            roi_name="roi",
+        )
+        region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
+        roi = roi[np.newaxis, ...]
+        return region, roi
+    def __iter__(self):
+        for idx in range(len(self)):
+            yield self[idx]
+
+    def __len__(self):
+        return len(self._regions)
+
 
 
 class _WriterMessage(TypedDict):
@@ -229,8 +353,7 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
-        # prediction = batch["prediction"].detach().cpu().numpy()
-        prediction = batch["target"].detach().cpu().numpy()
+        prediction = batch["prediction"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
@@ -349,14 +472,13 @@ class ComputeWsiMetricsCallback(Callback):
                     annotations=annotations,
                     reader=h5reader,
                 )
-                for idx in range(len(dataset_of_validation_image)):
-                    ground_truth, prediction, roi = dataset_of_validation_image[idx]
-                    _prediction = torch.from_numpy(prediction).unsqueeze(0)
-                    _ground_truth = torch.from_numpy(ground_truth).unsqueeze(0)
-                    _roi = torch.from_numpy(roi).unsqueeze(0)
+                for sample in dataset_of_validation_image:
+                    prediction = torch.from_numpy(sample["prediction"]).unsqueeze(0).float()
+                    target = torch.from_numpy(sample["target"]).unsqueeze(0)
+                    roi = torch.from_numpy(sample["roi"]).unsqueeze(0)
 
                     self._wsi_metrics.process_batch(
-                        predictions=_prediction.float(), target=_ground_truth, roi=_roi, wsi_name=str(filename)
+                        predictions=prediction, target=target, roi=roi, wsi_name=str(filename)
                     )
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
@@ -376,12 +498,11 @@ class ComputeWsiMetricsCallback(Callback):
 def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_function):
 
     validation_dataset = _ValidationDataset(
-        None, native_mpp=h5_reader.mpp, reader=h5_reader, annotations=None, mask=None, region_size=(1024, 1024)
+        data_description=None, native_mpp=h5_reader.mpp, reader=h5_reader, annotations=None, mask=None, region_size=(1024, 1024)
     )
 
-    # TODO Make an iterator of validatipon_dataset.
-    for idx in range(len(validation_dataset)):
-        _, region, _ = validation_dataset[idx]
+    for sample in validation_dataset:
+        region = sample["prediction"]
         yield region if tile_process_function is None else tile_process_function(region)
 
 
