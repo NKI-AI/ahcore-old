@@ -114,17 +114,6 @@ class AhCoreLightningModule(pl.LightningModule):
             return None
         return _tensorboard[0].experiment
 
-    def log_images(self, image: torch.Tensor, target: torch.Tensor, step: int, name: str, plotting_fn=None):
-        if not plotting_fn:
-            plotting_fn = self._plot_batch
-
-        mean = cast_list_to_tensor(self._data_description.normalize_mean, 0.0)
-        std = cast_list_to_tensor(self._data_description.normalize_std, 1.0)
-        _image = (image.cpu() * std) + mean
-        sample = plotting_fn(_image, mask_batch=target)
-        if self._tensorboard is not None:
-            self._tensorboard.add_image(f"{name}", sample, step)
-
     def _compute_metrics(
         self, prediction: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None, stage: TrainerFn
     ) -> dict[str, torch.Tensor]:
@@ -177,11 +166,6 @@ class AhCoreLightningModule(pl.LightningModule):
 
             # prepare the validation index for the next batch's step
             self._validation_index += batch_size
-            if batch_idx == 0:  # Log the images of the first step
-                predictions = F.softmax(_prediction, dim=1).detach()
-                # TODO: Can we extract the current stage from the trainer?
-                name = f"{self.STAGE_MAP[stage]}/images"
-                self.log_images(_input, target=predictions, step=self.global_step, name=f"{name}/prediction")
 
         return output
 
@@ -190,8 +174,6 @@ class AhCoreLightningModule(pl.LightningModule):
         if self.global_step == 0:
             if self._tensorboard:
                 self._tensorboard.add_graph(self._model, batch["image"])
-            self.log_images(batch["image"], target=batch["target"], step=self.global_step, name="train/images/batch_0")
-            # TODO: Log ROI
         return output
 
     def on_validation_start(self) -> None:
@@ -205,9 +187,6 @@ class AhCoreLightningModule(pl.LightningModule):
         filename = batch["path"][0]
         if any([filename != f for f in batch["path"]]):
             raise ValueError("Filenames are not constant across the batch.")
-
-        if self.current_epoch == 0 and batch_idx == 0:
-            self.log_images(batch["image"], target=batch["target"], step=self.global_step, name="val/images/batch_0")
         return output
 
     def on_validation_epoch_end(self) -> None:
