@@ -356,6 +356,7 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
+        # TODO: For debugging you can replace the prediction key with target
         prediction = batch["prediction"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
