@@ -563,6 +563,10 @@ class WriteTiffCallback(Callback):
         results = []
         for image_filename, h5_filename in self._filenames.items():
             self._logger.info("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
+            if not h5_filename.exists():
+                self._logger.warning("H5 file %s does not exist. Skipping", h5_filename)
+                continue
+
             result = self._pool.apply_async(
                 _write_tiff, (h5_filename, self._tile_size, self._tile_process_function, _iterator_from_reader)
             )
