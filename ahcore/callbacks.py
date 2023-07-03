@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import logging
 import multiprocessing
 import queue
 import threading
@@ -10,11 +11,11 @@ from pathlib import Path
 from threading import Semaphore
 from typing import Optional, TypedDict
 
-import logging
 import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
+import torch.distributed as dist
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
@@ -187,8 +188,10 @@ class _ValidationDataset(Dataset):
 
     def _validate_annotations(self, annotations: Optional[WsiAnnotations]) -> Optional[WsiAnnotations]:
         if annotations is not None and self._data_description is None:
-            raise ValueError("Annotations are provided but no data description is given. This is required to map the"
-                             "labels to indices.")
+            raise ValueError(
+                "Annotations are provided but no data description is given. This is required to map the"
+                "labels to indices."
+            )
 
         if annotations is not None and not isinstance(annotations, WsiAnnotations):
             raise NotImplementedError
@@ -241,9 +244,9 @@ class _ValidationDataset(Dataset):
 
     def _get_annotation_data(self, coordinates):
         annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
-        annotations = RenameLabels(remap_labels=self._data_description.remap_labels)(
-            {"annotations": annotations}
-        )["annotations"]
+        annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": annotations})[
+            "annotations"
+        ]
 
         points, region, roi = convert_annotations(
             annotations,
@@ -254,13 +257,13 @@ class _ValidationDataset(Dataset):
         region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
         roi = roi[np.newaxis, ...]
         return region, roi
+
     def __iter__(self):
         for idx in range(len(self)):
             yield self[idx]
 
     def __len__(self):
         return len(self._regions)
-
 
 
 class _WriterMessage(TypedDict):
@@ -279,12 +282,12 @@ def _get_uuid_for_filename(input_path: Path) -> str:
     return hex_dig
 
 
-def _get_output_filename(input_path: Path, epoch: None | int | str = None) -> Path:
+def _get_output_filename(input_path: Path, step: None | int | str = None) -> Path:
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
-    if epoch is not None:
-        return get_cache_dir() / "outputs" / f"epoch_{epoch}" / f"{hex_dig}.h5"
+    if step is not None:
+        return get_cache_dir() / "outputs" / f"step_{step}" / f"{hex_dig}.h5"
     return get_cache_dir() / "outputs" / f"{hex_dig}.h5"
 
 
@@ -317,9 +320,11 @@ class WriteH5Callback(Callback):
             # TODO: This filename might contain 'global_step', or only give the last one depending on settings
             # TODO: These files can be very large
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
-            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
+            output_filename = _get_output_filename(filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            with open(get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_h5_link.txt", "a") as file:
+            with open(
+                get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_h5_link.txt", "a"
+            ) as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
@@ -365,6 +370,9 @@ class WriteH5Callback(Callback):
         self._validation_index += prediction.shape[0]
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        if dist.get_rank() != 0:
+            return
+
         if self._current_filename is not None:
             self._writers[self._current_filename]["queue"].put(None)
             self._writers[self._current_filename]["thread"].join()
@@ -436,7 +444,7 @@ class ComputeWsiMetricsCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
+            output_filename = _get_output_filename(filename, step=pl_module.global_step)
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
 
@@ -502,7 +510,12 @@ class ComputeWsiMetricsCallback(Callback):
 def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_function):
 
     validation_dataset = _ValidationDataset(
-        data_description=None, native_mpp=h5_reader.mpp, reader=h5_reader, annotations=None, mask=None, region_size=(1024, 1024)
+        data_description=None,
+        native_mpp=h5_reader.mpp,
+        reader=h5_reader,
+        annotations=None,
+        mask=None,
+        region_size=(1024, 1024),
     )
 
     for sample in validation_dataset:
@@ -560,14 +573,16 @@ class WriteTiffCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(filename, epoch=pl_module.current_epoch)
+            output_filename = _get_output_filename(filename, step=pl_module.global_step)
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         results = []
         for image_filename, h5_filename in self._filenames.items():
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
-            with open(get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_tiff_link.txt", "a") as file:
+            with open(
+                get_cache_dir() / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
+            ) as file:
                 file.write(f"{image_filename},{h5_filename}\n")
             if not h5_filename.exists():
                 self._logger.warning("H5 file %s does not exist. Skipping", h5_filename)
