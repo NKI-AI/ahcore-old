@@ -370,8 +370,8 @@ class WriteH5Callback(Callback):
         self._validation_index += prediction.shape[0]
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        if dist.get_rank() != 0:
-            return
+        # if dist.get_rank() != 0:
+        #     return
 
         if self._current_filename is not None:
             self._writers[self._current_filename]["queue"].put(None)
@@ -546,9 +546,6 @@ class WriteTiffCallback(Callback):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
         self.__write_h5_callback_index = -1
-
-        self._h5_reader = H5FileImageReader
-        self._tiff_writer = TifffileImageWriter
 
         self._tile_size = (1024, 1024)
 

@@ -35,7 +35,7 @@ install_requires = [
     "kornia>=0.6.12",
     "h5py>=3.8.0",
     # "escnn>=1.0.8",  # To use equivariant unets
-    "monai==1.2.0",
+    "monai[einops]==1.2.0",
 ]
 
 
