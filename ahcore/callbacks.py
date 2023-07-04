@@ -323,7 +323,7 @@ class WriteH5Callback(Callback):
             output_filename = _get_output_filename(filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
             with open(
-                get_cache_dir() / "outputs" / f"epoch_{pl_module.current_epoch}" / "image_h5_link.txt", "a"
+                get_cache_dir() / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a"
             ) as file:
                 file.write(f"{filename},{output_filename}\n")
 
