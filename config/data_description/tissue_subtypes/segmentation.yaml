@@ -1,7 +1,7 @@
 _target_: ahcore.utils.data.DataDescription
 data_dir: ${oc.env:DATA_DIR}
-annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230111 # specify in .env
-manifest_path: ${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230111/manifest.json
+annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230228 # specify in .env
+manifest_path: ${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230228/manifest.json
 dataset_split_path: ${oc.env:DATASET_SPLIT}/tissue_subtypes/v20230111/train_val_test_split_mc.json
 center_info_path: ${oc.env:DATASET_SPLIT}/tissue_background/v20230125/tissue_source_site_codes.csv
 extract_center: True

@@ -2,20 +2,15 @@ _target_: ahcore.lit_module.AhCoreLightningModule
 
 model:
   # Do not set out_channels, this is derived from data_description.
-  _target_: monai.networks.nets.swin_unetr.SwinUNETR
+  _target_: monai.networks.nets.UNet
   _partial_: true
-  img_size: [512, 512, 3]
+  spatial_dims: 2
   in_channels: 3
-  depths: [2, 2, 2, 2]
-  num_heads: [3, 6, 12, 24]
-  feature_size: 24
-  norm_name: "instance"
-  drop_rate: 0.0
-  attn_drop_rate: 0.0
-  dropout_path_rate: 0.0
-  normalize: true
-  spatial_dims: 3
-  downsample: "merging"
+  out_channels: 4  # TODO: Pass automatically?
+  kernel_size: 3
+  channels: [4, 8, 16, 32, 64]
+  strides: [2, 2, 2, 2]
+  dropout: 0.1
 
 optimizer:
   _target_: torch.optim.Adam
