@@ -395,7 +395,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
-        self._dump_dir = dump_dir
+        self._dump_dir = Path(dump_dir)
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
