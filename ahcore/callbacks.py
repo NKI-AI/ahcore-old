@@ -9,7 +9,7 @@ import queue
 import threading
 from pathlib import Path
 from threading import Semaphore
-from typing import Optional, TypedDict, Iterator
+from typing import Iterator, Optional, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -236,6 +236,10 @@ class WriteH5Callback(Callback):
     def writers(self):
         return self._writers
 
+    @property
+    def dump_dir(self) -> Path:
+        return self._dump_dir
+
     def on_validation_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
@@ -310,22 +314,20 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, dump_dir: Path, max_threads=10):
+    def __init__(self, max_threads=10):
         """
         Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
         images in separate threads.
 
         Parameters
         ----------
-        dump_dir : pathlib.Path
-            The directory to read the H5 files to.
         max_threads : int
             The maximum number of concurrent threads.
         """
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
-        self._dump_dir = Path(dump_dir)
+        self._dump_dir = None
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
@@ -342,6 +344,8 @@ class ComputeWsiMetricsCallback(Callback):
                 has_write_h5_callback = True
                 self.__write_h5_callback_index = idx
                 break
+
+        self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
 
         if not has_write_h5_callback:
             raise ValueError(
@@ -477,10 +481,10 @@ def tile_process_function(x):
 
 
 class WriteTiffCallback(Callback):
-    def __init__(self, max_concurrent_writers: int, dump_dir: str):
+    def __init__(self, max_concurrent_writers: int):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
-        self._dump_dir = Path(dump_dir)
+        self._dump_dir = None
         self.__write_h5_callback_index = -1
 
         self._tile_size = (1024, 1024)
@@ -500,6 +504,8 @@ class WriteTiffCallback(Callback):
                 break
         if not has_write_h5_callback:
             raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")
+
+        self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
 
     def on_validation_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
