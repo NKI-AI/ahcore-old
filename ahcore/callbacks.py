@@ -16,6 +16,7 @@ import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 import torch.distributed as dist
+import json
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
@@ -314,7 +315,7 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_threads=10):
+    def __init__(self, max_threads=10, save_per_image: bool = True):
         """
         Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
         images in separate threads.
@@ -328,6 +329,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._reader = H5FileImageReader
         self._metrics = []
         self._dump_dir = None
+        self._save_per_image = save_per_image
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
@@ -431,6 +433,18 @@ class ComputeWsiMetricsCallback(Callback):
                     self._wsi_metrics.process_batch(
                         predictions=prediction, target=target, roi=roi, wsi_name=str(filename)
                     )
+        if self._save_per_image is True:
+            wsi_metrics_dictionary = {"image_fn": str(wsi_filename), "uuid": filename.stem}
+            if filename.with_suffix(".tiff").is_file():
+                wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
+            for metric in self._wsi_metrics._metrics:
+                metric.get_wsi_score(str(filename))
+                wsi_metrics_dictionary[metric.name] = {
+                    class_idx: metric.wsis[str(filename)][class_idx][metric.name].item()
+                    for class_idx in range(self._data_description.num_classes)
+                }
+            with open(filename.with_suffix(".json"), "w", encoding="utf-8") as json_file:
+                json.dump(wsi_metrics_dictionary, json_file, indent=2)
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
@@ -520,7 +534,6 @@ class WriteTiffCallback(Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         results = []
         for image_filename, h5_filename in self._filenames.items():
-            print(f"Started writing tiff for {image_filename}")
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             with open(
                 self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
