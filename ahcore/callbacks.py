@@ -391,10 +391,11 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_threads=10):
+    def __init__(self, dump_dir: str, max_threads=10):
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
+        self._dump_dir = dump_dir
         self._filenames: dict[Path, Path] = {}
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
@@ -446,7 +447,7 @@ class ComputeWsiMetricsCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step)
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
 
