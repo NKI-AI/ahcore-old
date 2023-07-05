@@ -1,3 +1,2 @@
 write_tiff_callback:
   _target_: ahcore.callbacks.WriteTiffCallback
-  dump_dir: ${oc.env:SCRATCH}/${task_name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
