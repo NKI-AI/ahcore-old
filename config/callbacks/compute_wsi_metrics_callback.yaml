@@ -1,2 +1,3 @@
 compute_wsi_metrics_callback:
   _target_: ahcore.callbacks.ComputeWsiMetricsCallback
+  dump_dir: ${oc.env:SCRATCH}/${task_name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
