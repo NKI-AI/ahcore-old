@@ -27,7 +27,7 @@ from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
-from ahcore.utils.io import get_cache_dir, get_logger
+from ahcore.utils.io import get_logger
 from ahcore.utils.manifest import DataDescription, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
 
@@ -282,20 +282,22 @@ def _get_uuid_for_filename(input_path: Path) -> str:
     return hex_dig
 
 
-def _get_output_filename(input_path: Path, step: None | int | str = None) -> Path:
+def _get_output_filename(dump_dir: Path, input_path: Path, step: None | int | str = None) -> Path:
+
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
     if step is not None:
-        return get_cache_dir() / "outputs" / f"step_{step}" / f"{hex_dig}.h5"
-    return get_cache_dir() / "outputs" / f"{hex_dig}.h5"
+        return dump_dir / "outputs" / f"step_{step}" / f"{hex_dig}.h5"
+    return dump_dir / "outputs" / f"{hex_dig}.h5"
 
 
 class WriteH5Callback(Callback):
-    def __init__(self, max_queue_size: int, max_concurrent_writers: int):
+    def __init__(self, max_queue_size: int, max_concurrent_writers: int, dump_dir: str):
         super().__init__()
         self._writers: dict[str, _WriterMessage] = {}
         self._current_filename = None
+        self._dump_dir = Path(dump_dir)
         self._max_queue_size = max_queue_size
         self._semaphore = Semaphore(max_concurrent_writers)
         self._validation_index = 0
@@ -320,10 +322,10 @@ class WriteH5Callback(Callback):
             # TODO: This filename might contain 'global_step', or only give the last one depending on settings
             # TODO: These files can be very large
             # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
-            output_filename = _get_output_filename(filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(self._dump_dir, filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
             with open(
-                get_cache_dir() / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a"
+                self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a"
             ) as file:
                 file.write(f"{filename},{output_filename}\n")
 
@@ -542,9 +544,10 @@ def tile_process_function(x):
 
 
 class WriteTiffCallback(Callback):
-    def __init__(self, max_concurrent_writers: int):
+    def __init__(self, max_concurrent_writers: int, dump_dir: str):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
+        self._dump_dir = Path(dump_dir)
         self.__write_h5_callback_index = -1
 
         self._tile_size = (1024, 1024)
@@ -570,7 +573,7 @@ class WriteTiffCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step)
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
@@ -579,7 +582,7 @@ class WriteTiffCallback(Callback):
             print(f"Started writing tiff for {image_filename}")
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             with open(
-                get_cache_dir() / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
+                self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
             ) as file:
                 file.write(f"{image_filename},{h5_filename}\n")
             if not h5_filename.exists():
