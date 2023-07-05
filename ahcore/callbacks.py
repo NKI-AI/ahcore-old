@@ -329,7 +329,7 @@ class WriteH5Callback(Callback):
 
             self._logger.debug("%s -> %s", filename, output_filename)
             if self._current_filename is not None:
-                self._writers[self._current_filename]["queue"].put(None)  # Add None to writer's queue
+                self._writers[self._current_filename]["queue"].put_nowait(None)  # Add None to writer's queue
                 self._writers[self._current_filename]["thread"].join()
                 self._semaphore.release()
 
@@ -366,15 +366,15 @@ class WriteH5Callback(Callback):
 
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
-        self._writers[filename]["queue"].put((coordinates, prediction))
+        self._writers[filename]["queue"].put_nowait((coordinates, prediction))
         self._validation_index += prediction.shape[0]
 
-    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # if dist.get_rank() != 0:
         #     return
 
         if self._current_filename is not None:
-            self._writers[self._current_filename]["queue"].put(None)
+            self._writers[self._current_filename]["queue"].put_nowait(None)
             self._writers[self._current_filename]["thread"].join()
             self._semaphore.release()
             self._validation_index = 0
@@ -576,6 +576,7 @@ class WriteTiffCallback(Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         results = []
         for image_filename, h5_filename in self._filenames.items():
+            print(f"Started writing tiff for {image_filename}")
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             with open(
                 get_cache_dir() / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
