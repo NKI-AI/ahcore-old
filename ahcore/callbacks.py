@@ -9,7 +9,7 @@ import queue
 import threading
 from pathlib import Path
 from threading import Semaphore
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Iterator
 
 import numpy as np
 import numpy.typing as npt
@@ -34,109 +34,6 @@ from ahcore.writers import H5FileImageWriter
 logger = get_logger(__name__)
 
 logging.getLogger("pyvips").setLevel(logging.ERROR)
-
-
-class _ValidationDatasetOld(Dataset):
-    """Helper dataset to compute the validation metrics in `ahcore.callbacks.ComputeWsiMetricsCallback`."""
-
-    def __init__(
-        self,
-        data_description: Optional[DataDescription],
-        native_mpp: float,
-        reader: H5FileImageReader,
-        annotations: WsiAnnotations | None,
-        mask: WsiAnnotations | None = None,
-        region_size: tuple[int, int] = (1024, 1024),
-    ):
-        """
-        Parameters
-        ----------
-        data_description : DataDescription
-        native_mpp : float
-            The actual mpp of the underlying image. Is likely different from the `reader` mpp.
-        reader : H5FileImageReader
-        annotations : WsiAnnotations
-        mask : WsiAnnotations (optional)
-        region_size : tuple[int, int]
-            The region size to use to split up the image into regions.
-        """
-        super().__init__()
-        self._data_description = data_description
-        self._native_mpp = native_mpp
-        self._scaling = self._native_mpp / reader.mpp
-        self._reader = reader
-        self._region_size = region_size
-
-        self._logger = get_logger(type(self).__name__)
-
-        if annotations is not None and not isinstance(annotations, WsiAnnotations):
-            raise NotImplementedError
-        if mask is not None and not isinstance(mask, WsiAnnotations):
-            raise NotImplemented
-
-        self._annotations = annotations
-        self._grid = Grid.from_tiling(
-            (0, 0),
-            reader.size,
-            tile_size=self._region_size,
-            tile_overlap=(0, 0),
-            mode=TilingMode.overflow,
-            order=GridOrder.C,
-        )
-
-        self._regions = []
-        for coordinates in self._grid:
-            if mask is None:
-                self._regions.append(coordinates)
-                continue
-
-            mask_area = mask.read_region(coordinates, self._scaling, self._region_size)
-            if sum([_.area for _ in mask_area]) > 0:
-                self._regions.append(coordinates)
-        self._logger.debug("Number of validation regions: %s", len(self._regions))
-
-    def __getitem__(self, idx):
-        coordinates = self._regions[idx]
-
-        x, y = coordinates
-        width, height = self._region_size
-
-        # Check if the region exceeds the reader's dimensions
-        if x + width > self._reader.size[0] or y + height > self._reader.size[1]:
-            # Calculate new region size
-            new_width = min(width, self._reader.size[0] - x)
-            new_height = min(height, self._reader.size[1] - y)
-            clipped_region = self._reader.read_region_raw((x, y), (new_width, new_height))
-
-            prediction = np.zeros((clipped_region.shape[0], *self._region_size), dtype=clipped_region.dtype)
-            prediction[:, :new_height, :new_width] = clipped_region
-
-        else:
-            prediction = self._reader.read_region_raw(coordinates, self._region_size)
-
-        if self._annotations is not None:
-            ground_truth = self._annotations.read_region(coordinates, self._scaling, self._region_size)
-
-            ground_truth = RenameLabels(remap_labels=self._data_description.remap_labels)(
-                {"annotations": ground_truth}
-            )["annotations"]
-            points, region, roi = convert_annotations(
-                ground_truth,
-                self._region_size,
-                index_map=self._data_description.index_map,
-                roi_name="roi",
-            )
-
-            region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
-            roi = roi[np.newaxis, ...]
-        else:
-            region = None
-            roi = None
-
-        return region, prediction, roi
-
-    def __len__(self):
-        return len(self._regions)
 
 
 class _ValidationDataset(Dataset):
@@ -197,18 +94,18 @@ class _ValidationDataset(Dataset):
             raise NotImplementedError
         return annotations
 
-    def _generate_regions(self):
+    def _generate_regions(self) -> list[tuple[int, int]]:
         regions = []
         for coordinates in self._grid:
             if self._mask is None or self._is_masked(coordinates):
                 regions.append(coordinates)
         return regions
 
-    def _is_masked(self, coordinates):
+    def _is_masked(self, coordinates: tuple[int, int]) -> bool:
         mask_area = self._mask.read_region(coordinates, self._scaling, self._region_size)
         return sum(_.area for _ in mask_area) > 0
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, npt.NDArray[np.uint8 | int | float]]:
         sample = {}
         coordinates = self._regions[idx]
 
@@ -221,7 +118,7 @@ class _ValidationDataset(Dataset):
 
         return sample
 
-    def _get_h5_region(self, coordinates):
+    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | int | float]:
         x, y = coordinates
         width, height = self._region_size
 
@@ -231,7 +128,7 @@ class _ValidationDataset(Dataset):
             region = self._reader.read_region_raw(coordinates, self._region_size)
         return region
 
-    def _read_and_pad_region(self, coordinates):
+    def _read_and_pad_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | int | float]:
         x, y = coordinates
         width, height = self._region_size
         new_width = min(width, self._reader.size[0] - x)
@@ -242,7 +139,9 @@ class _ValidationDataset(Dataset):
         prediction[:, :new_height, :new_width] = clipped_region
         return prediction
 
-    def _get_annotation_data(self, coordinates):
+    def _get_annotation_data(
+        self, coordinates: tuple[int, int]
+    ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
         annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
         annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": annotations})[
             "annotations"
@@ -258,11 +157,11 @@ class _ValidationDataset(Dataset):
         roi = roi[np.newaxis, ...]
         return region, roi
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[dict[str, npt.NDArray[np.uint8 | int | float]]]:
         for idx in range(len(self)):
             yield self[idx]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._regions)
 
 
@@ -273,6 +172,19 @@ class _WriterMessage(TypedDict):
 
 
 def _get_uuid_for_filename(input_path: Path) -> str:
+    """Get a unique filename for the given input path. This is done by hashing the absolute path of the file.
+    This is required because we cannot assume any input format. We hash the complete input path.
+
+    Parameters
+    ----------
+    input_path : Path
+        The input path to hash.
+
+    Returns
+    -------
+    str
+        The hashed filename.
+    """
     # Get the absolute path of the file
     input_path = Path(input_path).resolve()
 
@@ -293,7 +205,23 @@ def _get_output_filename(dump_dir: Path, input_path: Path, step: None | int | st
 
 
 class WriteH5Callback(Callback):
-    def __init__(self, max_queue_size: int, max_concurrent_writers: int, dump_dir: str):
+    def __init__(self, max_queue_size: int, max_concurrent_writers: int, dump_dir: Path):
+        """
+        Callback to write predictions to H5 files. This callback is used to write whole-slide predictions to single H5
+        files in a separate thread.
+
+        TODO:
+            - Add support for distributed data parallel
+
+        Parameters
+        ----------
+        max_queue_size : int
+            The maximum number of items to store in the queue (i.e. tiles).
+        max_concurrent_writers : int
+            The maximum number of concurrent writers.
+        dump_dir : pathlib.Path
+            The directory to dump the H5 files to.
+        """
         super().__init__()
         self._writers: dict[str, _WriterMessage] = {}
         self._current_filename = None
@@ -319,14 +247,9 @@ class WriteH5Callback(Callback):
             )
 
         if filename != self._current_filename:
-            # TODO: This filename might contain 'global_step', or only give the last one depending on settings
-            # TODO: These files can be very large
-            # TODO: The outputs also has a metrics dictionary, so you could use that to figure out if its better or not
             output_filename = _get_output_filename(self._dump_dir, filename, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            with open(
-                self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a"
-            ) as file:
+            with open(self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a") as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
@@ -363,7 +286,6 @@ class WriteH5Callback(Callback):
             self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
             self._current_filename = filename
 
-        # TODO: For debugging you can replace the prediction key with target
         prediction = batch["prediction"].detach().cpu().numpy()
 
         coordinates_x, coordinates_y = batch["coordinates"]
@@ -372,9 +294,6 @@ class WriteH5Callback(Callback):
         self._validation_index += prediction.shape[0]
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        # if dist.get_rank() != 0:
-        #     return
-
         if self._current_filename is not None:
             self._writers[self._current_filename]["queue"].put_nowait(None)
             self._writers[self._current_filename]["thread"].join()
@@ -391,7 +310,18 @@ class WriteH5Callback(Callback):
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, dump_dir: str, max_threads=10):
+    def __init__(self, dump_dir: Path, max_threads=10):
+        """
+        Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
+        images in separate threads.
+
+        Parameters
+        ----------
+        dump_dir : pathlib.Path
+            The directory to read the H5 files to.
+        max_threads : int
+            The maximum number of concurrent threads.
+        """
         self._data_description = None
         self._reader = H5FileImageReader
         self._metrics = []
@@ -447,7 +377,9 @@ class ComputeWsiMetricsCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(
+                dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step
+            )
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
 
@@ -574,7 +506,9 @@ class WriteTiffCallback(Callback):
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(
+                dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step
+            )
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
