@@ -585,7 +585,7 @@ class WriteTiffCallback(Callback):
             with open(
                 self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
             ) as file:
-                file.write(f"{image_filename},{h5_filename}\n")
+                file.write(f"{image_filename},{h5_filename.with_suffix('.tiff')}\n")
             if not h5_filename.exists():
                 self._logger.warning("H5 file %s does not exist. Skipping", h5_filename)
                 continue

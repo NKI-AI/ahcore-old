@@ -46,6 +46,7 @@ spack load openslide/njs7ivd
 spack load pixman@0.40.0
 spack load libvips@8.14.1
 spack unload py-pip/f53qb3w py-wheel/qiasbdy py-setuptools/yaxles2 python/ocsapfm
+spack unload python py-pip
 conda activate ahcore2
 spack load glib/7wugotn
 
