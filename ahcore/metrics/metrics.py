@@ -187,7 +187,7 @@ class WSIDiceMetric(WSIMetric):
         for class_idx in self.wsis[wsi_name]:
             intersection = self.wsis[wsi_name][class_idx]["intersection"]
             cardinality = self.wsis[wsi_name][class_idx]["cardinality"]
-            self.wsis[wsi_name][class_idx]["dice"] = _compute_dice(intersection, cardinality)
+            self.wsis[wsi_name][class_idx]["wsi_dice"] = _compute_dice(intersection, cardinality)
 
     def _get_overall_dice(self):
         """
