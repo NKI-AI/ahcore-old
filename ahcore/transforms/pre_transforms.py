@@ -232,17 +232,25 @@ class ImageToTensor:
 
 class ExtractTCGACenter:
     """Extracts center metadata for a TCGA WSI, given a metadata csv file
-    Args:
-        path: path to csv file containing 2 columns, TSS Code and Source Site (see example below)
-        centers: list of centers to index. If a center is encountered that is not part of
-            the provided list, it automatically gets assigned index len(centers)
+
+    Examples
+    --------
     An example content of a metadata csv file would be
-    TSS Code,Source Site
-    01,International Genomics Consortium
-    02,MD Anderson Cancer Center
+    > TSS Code,Source Site
+    > 01,International Genomics Consortium
+    > 02,MD Anderson Cancer Center
     """
 
     def __init__(self, meta_path: Union[Path, str], centers: list[str]) -> None:
+        """
+        Parameters
+        ----------
+        meta_path : str or Path
+            Path to csv file containing 2 columns, TSS Code and Source Site (see example below)
+        centers : list of str
+            List of centers to index. If a center is encountered that is not part of the provided list,
+            it automatically gets assigned index len(centers)
+        """
         # extract slide-to-center mapping from meta file
         self._center_map = {}
         self._meta_path = Path(meta_path)
