@@ -5,13 +5,9 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
-from functools import partial
-from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytorch_lightning as pl
-import torch.nn.functional as F
 import torch.optim.optimizer
 from dlup.data.dataset import ConcatDataset
 from pytorch_lightning.trainer.states import TrainerFn
@@ -19,11 +15,9 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
-from ahcore.transforms.augmentations import cast_list_to_tensor
 from ahcore.utils.data import DataDescription, InferenceMetadata
-from ahcore.utils.io import get_cache_dir, get_logger
+from ahcore.utils.io import get_logger
 from ahcore.utils.model import ExtractFeaturesHook
-from ahcore.utils.plotting import plot_batch
 
 logger = get_logger(__name__)
 
@@ -73,22 +67,15 @@ class AhCoreLightningModule(pl.LightningModule):
             if "linear_probing" in metrics:
                 self._robustness_metrics.append(metrics["linear_probing"])
 
-        self._plot_batch = partial(plot_batch, index_map=data_description.index_map, colors=data_description.colors)
         if not trackers:
             self._trackers = []
         else:
             self._trackers = trackers
 
-        self._index_map = data_description.index_map
         self._data_description = data_description
 
         self.predict_metadata: InferenceMetadata = self.INFERENCE_DICT  # Used for saving metadata during prediction
-
-        self._new_val_wsi: bool | None  # indicates when we start a new WSI in val_dataloader
-        self._written_val_tiffs: int = 0
-        self._validation_index: int | None = None  # keeps track of running indices during validation loop
         self._validation_dataset: ConcatDataset | None = None
-        self._tile_shape: tuple[int, int] | None = None
 
     @property
     def wsi_metrics(self):
@@ -164,9 +151,6 @@ class AhCoreLightningModule(pl.LightningModule):
             for robustness_metric in self._robustness_metrics:
                 robustness_metric.update(batch)
 
-            # prepare the validation index for the next batch's step
-            self._validation_index += batch_size
-
         return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
@@ -175,10 +159,6 @@ class AhCoreLightningModule(pl.LightningModule):
             if self._tensorboard:
                 self._tensorboard.add_graph(self._model, batch["image"])
         return output
-
-    def on_validation_start(self) -> None:
-        super().on_validation_start()
-        self._initialize_validation_loop_attributes()
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.VALIDATING)
@@ -234,57 +214,3 @@ class AhCoreLightningModule(pl.LightningModule):
                 },
             }
         return {"optimizer": optimizer}
-
-    def _initialize_validation_loop_attributes(self) -> None:
-        """Initializes all the instance variables that are used for tracking WSI-level info during a validation loop."""
-        self._new_val_wsi = True
-        self._validation_index = 0
-        self._set_val_loop_dataset()
-
-    def _set_val_loop_dataset(self) -> None:
-        """Fixes a reference to the validation ConcatDataset that is used in the current val loop.
-
-        To be called at the beginning of each validation run.
-        """
-        self._validation_dataset = self.trainer.datamodule.val_concat_dataset
-
-    @property
-    def validation_dataset(self) -> ConcatDataset:
-        """Returns the validation ConcatDataset that is used in the current val loop."""
-        return self.trainer.datamodule.val_concat_dataset
-
-    def _get_current_val_wsi_filename(self) -> Path:
-        """Retrieves the filename of the WSI that is currently processed in the validation loop"""
-        batch_dataset, _ = self._get_current_val_dataset()
-        return _get_filename_from_dataset(batch_dataset)
-
-    def _get_current_val_wsi_size(self) -> tuple[int, int]:
-        """Retrieves the size of the WSI processed at current val step, to be used by the tiffwriter"""
-        # retrieve the dataset corresponding to this batch
-        batch_dataset, _ = self._get_current_val_dataset()
-        # retrieve the size for the current mpp
-        mpp = self._data_description.inference_grid.mpp
-        scaling = batch_dataset.slide_image.get_scaling(mpp)
-        size = batch_dataset.slide_image.get_scaled_size(scaling)
-        return size
-
-    # TODO: Interesting apporach.
-    def _get_current_val_dataset(self, return_num_tiles: bool = False):
-        """Retrieves the validation dataset that is processed at the current step in the val loop"""
-        concat_dataset = self.validation_dataset
-        curr_val_dataset = concat_dataset.index_to_dataset(self._validation_index)
-        self._tile_shape = curr_val_dataset[0].grids[0][1]
-        if return_num_tiles:
-            num_grid_tiles = len(curr_val_dataset[0].grids[0][0])
-            return curr_val_dataset, num_grid_tiles
-        return curr_val_dataset
-
-
-def _get_filename_from_dataset(dataset) -> Path:
-    path = Path(dataset.slide_image.identifier)
-    return Path(path.parent.stem) / path.stem
-
-
-def _process_prediction(prediction: torch.Tensor) -> np.ndarray:
-    argmax_prediction = torch.argmax(prediction, dim=1)
-    return argmax_prediction.cpu().numpy().astype("uint8")

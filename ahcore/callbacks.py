@@ -15,7 +15,6 @@ import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
-import torch.distributed as dist
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
@@ -23,6 +22,7 @@ from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
+from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
@@ -84,17 +84,30 @@ class _ValidationDataset(Dataset):
         self._logger.debug(f"Number of validation regions: {len(self._regions)}")
 
     def _validate_annotations(self, annotations: Optional[WsiAnnotations]) -> Optional[WsiAnnotations]:
-        if annotations is not None and self._data_description is None:
-            raise ValueError(
-                "Annotations are provided but no data description is given. This is required to map the"
-                "labels to indices."
-            )
+        if annotations is None:
+            return None
 
-        if annotations is not None and not isinstance(annotations, WsiAnnotations):
-            raise NotImplementedError
+        if isinstance(annotations, WsiAnnotations):
+            if self._data_description is None:
+                raise ValueError(
+                    "Annotations as a `WsiAnnotations` class are provided but no data description is given."
+                    "This is required to map the labels to indices."
+                )
+        elif isinstance(annotations, SlideImage):
+            pass  # We do not need a specific test for this
+        else:
+            raise NotImplementedError(f"Annotations of type {type(annotations)} are not supported.")
+
         return annotations
 
     def _generate_regions(self) -> list[tuple[int, int]]:
+        """Generate the regions to use. These regions are filtered grid cells where there is a mask.
+
+        Returns
+        -------
+        List[Tuple[int, int]]
+            The list of regions.
+        """
         regions = []
         for coordinates in self._grid:
             if self._mask is None or self._is_masked(coordinates):
@@ -102,8 +115,28 @@ class _ValidationDataset(Dataset):
         return regions
 
     def _is_masked(self, coordinates: tuple[int, int]) -> bool:
-        mask_area = self._mask.read_region(coordinates, self._scaling, self._region_size)
-        return sum(_.area for _ in mask_area) > 0
+        """Check if the region is masked. This works with any masking function that supports a `read_region` method or
+        returns a list of annotations with an `area` attribute. In case there are elements of the form `Point` in the
+        annotation list, these are also added.
+
+        Parameters
+        ----------
+        coordinates : Tuple[int, int]
+            The coordinates of the region to check.
+
+        Returns
+        -------
+        bool
+            True if the region is masked, False otherwise.
+        """
+        region_mask = self._mask.read_region(coordinates, self._scaling, self._region_size)
+
+        if isinstance(region_mask, np.ndarray):
+            return region_mask.sum() > 0
+
+        # We check if the region is not a Point, otherwise this annotation is always included
+        # Else, we compute if there is a positive area in the region.
+        return sum(_.area if _ is not isinstance(_, (Point, MultiPoint)) else 1.0 for _ in region_mask) > 0
 
     def __getitem__(self, idx: int) -> dict[str, npt.NDArray[np.uint8 | int | float]]:
         sample = {}
@@ -349,7 +382,8 @@ class ComputeWsiMetricsCallback(Callback):
 
         if not has_write_h5_callback:
             raise ValueError(
-                "WriteH5Callback is not in the trainer's callbacks. This is required before WSI metrics can be computed using this Callback"
+                "WriteH5Callback is not in the trainer's callbacks. "
+                "This is required before WSI metrics can be computed using this Callback"
             )
 
         self._wsi_metrics = pl_module.wsi_metrics
@@ -471,6 +505,7 @@ def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reade
             mpp=h5_reader.mpp,
             tile_size=tile_size,
             pyramid=True,
+            compression=TiffCompression.ZSTD,
             interpolator=Resampling.NEAREST,
         )
         writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
