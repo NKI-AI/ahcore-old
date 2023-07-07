@@ -10,8 +10,8 @@ initial_transforms:
     probability: 1.0
     requested_mpp: 16.0
   - _target_: ahcore.transforms.augmentations.MeanStdNormalizer
-    mean: ${data_description.normalize_mean}
-    std: ${data_description.normalize_std}
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
 
 
 # [a, b] select between a and b random intensity transforms to apply.

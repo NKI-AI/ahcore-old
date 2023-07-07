@@ -44,6 +44,7 @@ class AhCoreLightningModule(pl.LightningModule):
         augmentations: dict[str, nn.Module] | None = None,
         metrics: dict[str, nn.Module] | None = None,
         scheduler: Any | None = None,  # noqa
+        attach_feature_layers: list[str] | None = None,
         trackers: list[Any] | None = None,
     ):
         super().__init__()
@@ -73,6 +74,7 @@ class AhCoreLightningModule(pl.LightningModule):
             self._trackers = trackers
 
         self._data_description = data_description
+        self._attach_feature_layers = attach_feature_layers
 
         self.predict_metadata: InferenceMetadata = self.INFERENCE_DICT  # Used for saving metadata during prediction
         self._validation_dataset: ConcatDataset | None = None
@@ -127,7 +129,7 @@ class AhCoreLightningModule(pl.LightningModule):
         roi = batch.get("roi", None)
 
         # Extract features only when not training
-        layer_names = [] if stage == TrainerFn.FITTING else self._data_description.feature_layers
+        layer_names = [] if stage == TrainerFn.FITTING else self._attach_feature_layers
         with ExtractFeaturesHook(self._model, layer_names=layer_names) as hook:
             _prediction = self._model(_input)
             if layer_names is not []:  # Only add the features if they are requested

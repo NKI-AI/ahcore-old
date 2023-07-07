@@ -23,14 +23,8 @@ inference_grid:
   tile_size: [512, 512]
   tile_overlap: [128, 128]
 
-normalize_mean: [0.485, 0.456, 0.406]
-normalize_std: [0.229, 0.224, 0.225]
-
 num_classes: 4
 use_class_weights: false  # Use the class weights in the loss
-feature_layers:
-  - "model.1.upconv.up.adn.A"
-
 remap_labels:
   stroma: stroma
   tumor: tumor
