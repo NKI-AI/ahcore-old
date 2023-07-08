@@ -52,7 +52,6 @@ class DataDescription:
     dataset_split_path: Optional[Path]
     center_info_path: Optional[Path]
     centers: Optional[list[str]]
-    feature_layers: Optional[list[str]]
     annotations_dir: Path
 
     training_grid: GridDescription

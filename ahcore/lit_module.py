@@ -171,6 +171,10 @@ class AhCoreLightningModule(pl.LightningModule):
             raise ValueError("Filenames are not constant across the batch.")
         return output
 
+    def on_validation_start(self) -> None:
+        super().on_validation_start()
+        self._validation_dataset = self.trainer.datamodule.val_concat_dataset
+
     def on_validation_epoch_end(self) -> None:
         if len(self._robustness_metrics) > 0:
             for robustness_metric in self._robustness_metrics:
