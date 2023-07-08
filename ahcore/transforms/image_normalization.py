@@ -428,10 +428,9 @@ class MacenkoNormalizer(nn.Module):
                 he, max_con = self._stain_vector_cache[filename]
             else:
                 # Now we need to compute it.
-                # TODO: Where can we get the overwrite mpp from?
                 kwargs = {}
                 if Path(filename) in self._overwrite_mpp:
-                    kwargs["overwrite_mpp"] = self._overwrite_mpp[Path(filename)]
+                    kwargs["overwrite_mpp"] = (self._overwrite_mpp[Path(filename)], self._overwrite_mpp[Path(filename)])
                 with SlideImage.from_file_path(filename, **kwargs) as slide_image:
                     logger.info("Computing Macenko staining vector for %s", filename)
                     stain_computer = MacenkoNormalizer(return_stains=False)
@@ -462,6 +461,8 @@ class MacenkoNormalizer(nn.Module):
     def forward(self, *args: tuple[torch.Tensor], **kwargs) -> tuple[torch.Tensor]:
         args = list(args)
         sample = args[0]
+        if "overwrite_mpp" in kwargs.keys():
+            setattr(self, "_overwrite_mpp", kwargs["overwrite_mpp"])
         if "staining_parameters" in kwargs.keys():
             staining_parameters = kwargs["staining_parameters"]
         else:
