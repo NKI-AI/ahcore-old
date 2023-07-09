@@ -372,6 +372,8 @@ class ComputeWsiMetricsCallback(Callback):
         self._wsi_metrics = None
 
         self._validation_manifests: dict[str, ImageManifest] = {}
+        if self._save_per_image is True:
+            self._dump_list = []
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
         has_write_h5_callback = None
@@ -474,21 +476,22 @@ class ComputeWsiMetricsCallback(Callback):
                 wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
             if filename.is_file():
                 wsi_metrics_dictionary["h5_fn"] = str(filename)
-            # TODO: This is a protected member.
             for metric in self._wsi_metrics._metrics:
                 metric.get_wsi_score(str(filename))
+                # TODO: Rename the class_idx with their respective class strings.
                 wsi_metrics_dictionary[metric.name] = {
                     class_idx: metric.wsis[str(filename)][class_idx][metric.name].item()
                     for class_idx in range(self._data_description.num_classes)
                 }
-            with open(filename.with_suffix(".json"), "w", encoding="utf-8") as json_file:
-                json.dump(wsi_metrics_dictionary, json_file, indent=2)
+            self._dump_list.append(wsi_metrics_dictionary)
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
         self.compute_metrics()
         metrics = self._wsi_metrics.get_average_score()
+        with open(self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "results.json", "w", encoding="utf-8") as json_file:
+            json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
 
         self._logger.debug("Metrics: %s", metrics)
