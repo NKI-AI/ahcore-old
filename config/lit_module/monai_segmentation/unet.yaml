@@ -1,4 +1,7 @@
 _target_: ahcore.lit_module.AhCoreLightningModule
+attach_feature_layers:
+  - 'model.0.conv'
+  - 'model.1.submodule.1.submodule.1.submodule'
 
 model:
   # Do not set out_channels, this is derived from data_description.
