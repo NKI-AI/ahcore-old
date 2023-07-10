@@ -177,18 +177,20 @@ class MacenkoNormalizer(nn.Module):
         self._stain_vector_cache = {}
         self._he_con_augment = augment_he_concentrations
         self._he_augment_cache = {}
-        self._num_pixels_in_tile = 0
+        self._num_pixels_in_batch = 0
 
         self._probability = probability
         self._he_reference = self.HE_REFERENCE
         self._max_con_reference = self.MAX_CON_REFERENCE
 
     def _get_con_scaling_bias(self, filenames: list[str]) -> None:
-        sigma = torch.tensor(0.05)
+        sigma = torch.tensor(0.9)
+        _from = torch.FloatTensor(1).uniform_(-10, 0).item()
+        _to = torch.FloatTensor(1).uniform_(0, 10).item()
         for filename in filenames:
             if filename not in self._he_augment_cache:
-                scaling_tensor = torch.FloatTensor(2, self._num_pixels_in_tile).uniform_(1 - sigma, 1 + sigma)
-                bias_tensor = torch.FloatTensor(2, self._num_pixels_in_tile).uniform_(-sigma, sigma)
+                scaling_tensor = torch.FloatTensor(2, self._num_pixels_in_batch).uniform_((1 - sigma), (1 + sigma))
+                bias_tensor = torch.FloatTensor(2, self._num_pixels_in_batch).uniform_(_from - sigma, _to + sigma)
                 self._he_augment_cache[filename] = (scaling_tensor, bias_tensor)
 
     def _augment_he_con(self, he_con_vector: torch.Tensor, filenames: list[str]) -> torch.Tensor:
@@ -204,13 +206,15 @@ class MacenkoNormalizer(nn.Module):
         self._get_con_scaling_bias(filenames)
         scaling = []
         bias = []
+        shape = he_con_vector.shape
         for filename in filenames:
             _scaling, _bias = self._he_augment_cache[filename]
             scaling.append(_scaling)
             bias.append(_bias)
-        scaling = torch.stack(scaling, 0).to(he_con_vector)
-        bias = torch.stack(bias, 0).to(he_con_vector)
-        augmented_he_vector = scaling * he_con_vector + bias
+        scaling = torch.stack(scaling, 0).to(he_con_vector).reshape(shape)
+        bias = torch.stack(bias, 0).to(he_con_vector).reshape(shape)
+        augmented_he_vector = scaling * he_con_vector
+        augmented_he_vector = torch.where(augmented_he_vector > 1, augmented_he_vector + bias, augmented_he_vector)
         return augmented_he_vector
 
     def __compute_matrices(
@@ -376,7 +380,7 @@ class MacenkoNormalizer(nn.Module):
         # remove transparent pixels
         mask = optical_density.min(dim=-1).values > self._beta
         optical_density_hat = [optical_density[i][mask[i]] for i in range(num_tiles)]
-        self._num_pixels_in_tile = optical_density.shape[0]
+        self._num_pixels_in_batch = optical_density.shape[0] * optical_density.shape[1] * optical_density.shape[2]
         return optical_density, optical_density_hat
 
     def convert_optical_density_to_rgb(self, od_tensor: torch.Tensor) -> torch.Tensor:
@@ -496,18 +500,18 @@ class MacenkoNormalizer(nn.Module):
     def forward(self, *args: tuple[torch.Tensor], **kwargs) -> tuple[torch.Tensor]:
         args = list(args)
         sample = args[0]
+        filenames = kwargs["filenames"]
         if "overwrite_mpp" in kwargs.keys():
             setattr(self, "_overwrite_mpp", kwargs["overwrite_mpp"])
         if "staining_parameters" in kwargs.keys():
             staining_parameters = kwargs["staining_parameters"]
         else:
-            filenames = kwargs["filenames"]
             staining_parameters = self._get_staining_vectors_from_cache_or_file(filenames)
         tile_concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
         wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
-        if self._he_con_augment:
-            tile_concentrations = self._augment_he_con(he_con_vector=tile_concentrations, filenames=filenames)
         normalized_concentrations = self.__normalize_concentrations(tile_concentrations, wsi_maximum_concentration)
+        if self._he_con_augment:
+            normalized_concentrations = self._augment_he_con(he_con_vector=normalized_concentrations, filenames=filenames)
         normalised_image_tensor = self.__create_normalized_images(normalized_concentrations, sample)
         args[0] = normalised_image_tensor
         return tuple(args)
