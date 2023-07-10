@@ -498,8 +498,11 @@ class MacenkoNormalizer(nn.Module):
         sample = args[0]
         if "overwrite_mpp" in kwargs.keys():
             setattr(self, "_overwrite_mpp", kwargs["overwrite_mpp"])
-        filenames = kwargs["filenames"]
-        staining_parameters = self._get_staining_vectors_from_cache_or_file(filenames)
+        if "staining_parameters" in kwargs.keys():
+            staining_parameters = kwargs["staining_parameters"]
+        else:
+            filenames = kwargs["filenames"]
+            staining_parameters = self._get_staining_vectors_from_cache_or_file(filenames)
         tile_concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
         wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
         if self._he_con_augment:
