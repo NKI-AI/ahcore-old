@@ -9,6 +9,7 @@ initial_transforms:
     return_stains: False
     probability: 1.0
     requested_mpp: 16.0
+    augment_he_concentrations: False
   - _target_: ahcore.transforms.augmentations.MeanStdNormalizer
     mean: [0.0, 0.0, 0.0]
     std: [1.0, 1.0, 1.0]
