@@ -83,6 +83,10 @@ class AhCoreLightningModule(pl.LightningModule):
     def wsi_metrics(self):
         return self._wsi_metrics
 
+    @property
+    def name(self):
+        return self._model.__class__.__name__
+
     def forward(self, sample):
         """This function is only used during inference"""
         self._model.eval()
