@@ -229,14 +229,14 @@ def _get_uuid_for_filename(input_path: Path) -> str:
     return hex_dig
 
 
-def _get_output_filename(dump_dir: Path, input_path: Path, step: None | int | str = None) -> Path:
+def _get_output_filename(dump_dir: Path, input_path: Path, model_name: str, step: None | int | str = None) -> Path:
 
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
     if step is not None:
-        return dump_dir / "outputs" / f"step_{step}" / f"{hex_dig}.h5"
-    return dump_dir / "outputs" / f"{hex_dig}.h5"
+        return dump_dir / "outputs" / model_name / f"step_{step}" / f"{hex_dig}.h5"
+    return dump_dir / "outputs" / model_name / f"{hex_dig}.h5"
 
 
 class WriteH5Callback(Callback):
@@ -286,9 +286,9 @@ class WriteH5Callback(Callback):
             )
 
         if filename != self._current_filename:
-            output_filename = _get_output_filename(self._dump_dir, filename, step=pl_module.global_step)
+            output_filename = _get_output_filename(self._dump_dir, filename, model_name=pl_module.name, step=pl_module.global_step)
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a") as file:
+            with open(self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt", "a") as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
@@ -421,7 +421,8 @@ class ComputeWsiMetricsCallback(Callback):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
-                dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step
+                dump_dir=self._dump_dir, input_path=filename, model_name=pl_module.name,
+                step=pl_module.global_step
             )
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
@@ -490,7 +491,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
         self.compute_metrics()
         metrics = self._wsi_metrics.get_average_score()
-        with open(self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "results.json", "w", encoding="utf-8") as json_file:
+        with open(self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json", "w", encoding="utf-8") as json_file:
             json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
 
@@ -569,7 +570,7 @@ class WriteTiffCallback(Callback):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
-                dump_dir=self._dump_dir, input_path=filename, step=pl_module.global_step
+                dump_dir=self._dump_dir, input_path=filename, model_name=pl_module.name, step=pl_module.global_step
             )
             self._filenames[filename] = output_filename
 
@@ -578,7 +579,7 @@ class WriteTiffCallback(Callback):
         for image_filename, h5_filename in self._filenames.items():
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             with open(
-                self._dump_dir / "outputs" / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
+                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt", "a"
             ) as file:
                 file.write(f"{image_filename},{h5_filename.with_suffix('.tiff')}\n")
             if not h5_filename.exists():
