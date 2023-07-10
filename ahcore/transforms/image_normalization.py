@@ -184,6 +184,16 @@ class MacenkoNormalizer(nn.Module):
         self._max_con_reference = self.MAX_CON_REFERENCE
 
     def _get_con_scaling_bias(self, filenames: list[str]) -> None:
+        """
+        Cache the scaling factors and the biases.
+        Parameters
+        ----------
+        filenames
+
+        Returns
+        -------
+
+        """
         sigma = torch.tensor(0.5)
         _from = torch.FloatTensor(1).uniform_(-10, 0).item()
         _to = torch.FloatTensor(1).uniform_(0, 10).item()
@@ -195,6 +205,8 @@ class MacenkoNormalizer(nn.Module):
 
     def _augment_he_con(self, he_con_vector: torch.Tensor, filenames: list[str]) -> torch.Tensor:
         """
+        Augment concentrations of H and E stains.
+
         Parameters
         ----------
         he_con_vector: torch.Tensor
