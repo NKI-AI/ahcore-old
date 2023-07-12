@@ -89,7 +89,6 @@ class AhCoreLightningModule(pl.LightningModule):
         self._use_test_time_augmentation = True
         self._tta_steps = len(self._tta_augmentations)
 
-
     @property
     def wsi_metrics(self):
         return self._wsi_metrics
@@ -170,34 +169,24 @@ class AhCoreLightningModule(pl.LightningModule):
     def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
         output = {}
 
-        if self._use_test_time_augmentation:
-            _predictions = torch.zeros([self._tta_steps, *_input.size()], device=self.device)
-            _collected_features = None
+        _predictions = torch.zeros([self._tta_steps, *_input.size()], device=self.device)
+        _collected_features = None
 
-            with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
-                for idx, augmentation in enumerate(self._tta_augmentations):
-                    model_prediction = self._model(augmentation(_input))
-                    _predictions[idx] = augmentation.inverse(model_prediction)
+        with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
+            for idx, augmentation in enumerate(self._tta_augmentations):
+                model_prediction = self._model(augmentation(_input))
+                _predictions[idx] = augmentation.inverse(model_prediction)
 
-                    if self._attach_feature_layers:
-                        _features = hook.features
-                        if _collected_features is None:
-                            _collected_features = torch.zeros([self._tta_steps, *_features.size()], device=self.device)
-                        _features[idx] = _collected_features
-
-                output["prediction"] = _predictions.mean(dim=0)
-
-            if self._attach_feature_layers:
-                if _collected_features is None:
-                    output["features"] = hook.features.unsqueeze(0)
-                else:
-                    output["features"] = _collected_features
-
-        else:
-            with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
-                _prediction = self._model(_input)
                 if self._attach_feature_layers:
-                    output["features"] = hook.features.unsqueeze(0)
+                    _features = hook.features
+                    if _collected_features is None:
+                        _collected_features = torch.zeros([self._tta_steps, *_features.size()], device=self.device)
+                    _features[idx] = _collected_features
+
+            output["prediction"] = _predictions.mean(dim=0)
+
+        if self._attach_feature_layers:
+            output["features"] = _collected_features
 
         return output
 

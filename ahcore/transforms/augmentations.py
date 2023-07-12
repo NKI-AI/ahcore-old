@@ -15,7 +15,7 @@ from torch import nn
 
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
-
+import kornia as K
 logger = get_logger(__name__)
 
 
@@ -84,6 +84,7 @@ class MeanStdNormalizer(nn.Module):
 
         return output
 
+
 class Identity(nn.Module):
     """
     Identity transform.
@@ -95,6 +96,8 @@ class Identity(nn.Module):
     def forward(self, *args: torch.Tensor, **kwargs):
         return args
 
+    def inverse(self, *args: torch.Tensor, **kwargs):
+        return args
 
 class CenterCrop(nn.Module):
     """Perform a center crop of the image and target"""
