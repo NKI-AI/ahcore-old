@@ -84,6 +84,17 @@ class MeanStdNormalizer(nn.Module):
 
         return output
 
+class Identity(nn.Module):
+    """
+    Identity transform.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, *args: torch.Tensor, **kwargs):
+        return args
+
 
 class CenterCrop(nn.Module):
     """Perform a center crop of the image and target"""
