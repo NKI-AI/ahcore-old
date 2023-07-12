@@ -142,11 +142,11 @@ class AhCoreLightningModule(pl.LightningModule):
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        if not self._use_test_time_augmentation and stage != TrainerFn.FITTING:
-            _prediction = self._get_prediction(batch_size, stage)
+        if stage == TrainerFn.FITTING:
+            _prediction = self._model(batch["image"])
+            batch["prediction"] = _prediction
         else:
-            _prediction = self._get_tta_prediction(batch)
-        batch["prediction"] = _prediction
+            batch = {**batch, **self._get_inference_prediction(batch["image"])}
 
         loss = self._loss(_prediction, _target, roi)
         # The relevant_dict contains values to know where the tiles originate.
@@ -167,25 +167,39 @@ class AhCoreLightningModule(pl.LightningModule):
 
         return output
 
-    def _get_prediction(self, batch: dict[str, torch.Tensor], stage: TrainerFn):
-        # Extract features only when not training
-        layer_names = [] if stage == TrainerFn.FITTING else self._attach_feature_layers
-        with ExtractFeaturesHook(self._model, layer_names=layer_names) as hook:
-            _prediction = self._model(batch["image"])
-            if layer_names is not []:  # Only add the features if they are requested
-                batch["features"] = hook.features
-        return _prediction
+    def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
+        output = {}
 
-    def _get_tta_prediction(self, batch: dict[str, torch.Tensor]):
-        _predictions = torch.zeros([self._tta_steps, *batch["image"].size()], device=self.device)
-        for idx in range(self._tta_steps):
-            augmentation = self._tta_augmentations[idx]
-            if idx == 0:
-                _predictions[0] = self._get_prediction(batch, stage=TrainerFn.VALIDATING)
-            else:
-                _predictions[idx] = augmentation.inverse(self._model(augmentation(batch["image"])))
+        if self._use_test_time_augmentation:
+            _predictions = torch.zeros([self._tta_steps, *_input.size()], device=self.device)
+            _collected_features = None
 
-        return _predictions.mean(dim=0)
+            with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
+                for idx, augmentation in enumerate(self._tta_augmentations):
+                    model_prediction = self._model(augmentation(_input))
+                    _predictions[idx] = augmentation.inverse(model_prediction)
+
+                    if self._attach_feature_layers:
+                        _features = hook.features
+                        if _collected_features is None:
+                            _collected_features = torch.zeros([self._tta_steps, *_features.size()], device=self.device)
+                        _features[idx] = _collected_features
+
+                output["prediction"] = _predictions.mean(dim=0)
+
+            if self._attach_feature_layers:
+                if _collected_features is None:
+                    output["features"] = hook.features.unsqueeze(0)
+                else:
+                    output["features"] = _collected_features
+
+        else:
+            with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
+                _prediction = self._model(_input)
+                if self._attach_feature_layers:
+                    output["features"] = hook.features.unsqueeze(0)
+
+        return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
