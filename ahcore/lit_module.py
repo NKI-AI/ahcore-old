@@ -54,7 +54,8 @@ class AhCoreLightningModule(pl.LightningModule):
             logger=False, ignore=["model", "augmentations", "metrics", "data_description", "loss", "trackers"]
         )  # TODO: we should send the hyperparams to the logger elsewhere
 
-        self._model = model(out_channels=data_description.num_classes)
+        self._num_classes = data_description.num_classes
+        self._model = model(out_channels=self._num_classes)
         self._augmentations = augmentations
 
         self._loss = loss
@@ -82,7 +83,7 @@ class AhCoreLightningModule(pl.LightningModule):
 
         # Setup test-time augmentation
         self._tta_augmentations = [
-            ahcore.transforms.augmentations.Identity,
+            ahcore.transforms.augmentations.Identity(),
             K.augmentation.RandomHorizontalFlip(p=1.0),
             K.augmentation.RandomVerticalFlip(p=1.0),
         ]
@@ -146,6 +147,7 @@ class AhCoreLightningModule(pl.LightningModule):
             batch["prediction"] = _prediction
         else:
             batch = {**batch, **self._get_inference_prediction(batch["image"])}
+            _prediction = batch["prediction"]
 
         loss = self._loss(_prediction, _target, roi)
         # The relevant_dict contains values to know where the tiles originate.
@@ -169,8 +171,9 @@ class AhCoreLightningModule(pl.LightningModule):
     def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
         output = {}
 
-        _predictions = torch.zeros([self._tta_steps, *_input.size()], device=self.device)
-        _collected_features = None
+        output_size = (_input.shape[0], self._num_classes, *_input.shape[2:])
+        _predictions = torch.zeros([self._tta_steps, *output_size], device=self.device)
+        _collected_features = {k: None for k in self._attach_feature_layers}
 
         with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
             for idx, augmentation in enumerate(self._tta_augmentations):
@@ -179,9 +182,12 @@ class AhCoreLightningModule(pl.LightningModule):
 
                 if self._attach_feature_layers:
                     _features = hook.features
-                    if _collected_features is None:
-                        _collected_features = torch.zeros([self._tta_steps, *_features.size()], device=self.device)
-                    _features[idx] = _collected_features
+                    for key in _features:
+                        if _collected_features[key] is None:
+                            _collected_features[key] = torch.zeros(
+                                [self._tta_steps, *_features[key].size()], device=self.device
+                            )
+                        _features[key] = _collected_features[key]
 
             output["prediction"] = _predictions.mean(dim=0)
 
@@ -199,6 +205,7 @@ class AhCoreLightningModule(pl.LightningModule):
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.VALIDATING)
+        output["prediction"] = batch["prediction"]
 
         # This is a sanity check. We expect the filenames to be constant across the batch.
         filename = batch["path"][0]

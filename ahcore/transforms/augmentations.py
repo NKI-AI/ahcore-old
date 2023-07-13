@@ -95,9 +95,14 @@ class Identity(nn.Module):
         super().__init__()
 
     def forward(self, *args: torch.Tensor, **kwargs):
+        if len(args) == 1:
+            return args[0]
+
         return args
 
     def inverse(self, *args: torch.Tensor, **kwargs):
+        if len(args) == 1:
+            return args[0]
         return args
 
 
@@ -125,6 +130,7 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         """
         Apply a color stain augmentation in the Hemaetoxylin-Eosin-DAB (HED) color space based on [1].
         The fixed normalized OD matrix values are based on [2].
+
         Parameters
         ----------
         scale_sigma: float or tuple of floats
@@ -133,6 +139,7 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
             For each channel in the HED space a random bias is added drawn from beta_i ~ U(-sigma_i,sigma_i).
         epsilon: float
             Small positive bias to avoid numerical errors
+
         References
         ----------
         [1] Tellez, David, et al. "Whole-slide mitosis detection in H&E breast histology using PHH3 as a reference to train distilled stain-invariant convolutional networks." IEEE transactions on medical imaging 37.9 (2018): 2126-2136.
