@@ -18,6 +18,10 @@ intensity_augmentations:
   - _target_: kornia.augmentation.RandomSharpness
     p: 0.5
     sharpness: 10
+  - _target_: ahcore.transforms.augmentations.HEDColorAugmentation
+    p: 0.5
+    scale_sigma: 0.2  # HED-light
+    bias_sigma: 0.2   # HED-light
   - _target_: kornia.augmentation.ColorJitter
     p: 0.5
     brightness: 0.05
