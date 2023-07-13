@@ -6,7 +6,8 @@ This module contains the core Lightning module for ahcore. This module is respon
 from __future__ import annotations
 
 from typing import Any
-
+import kornia as K
+import ahcore.transforms.augmentations
 import pytorch_lightning as pl
 import torch.optim.optimizer
 from dlup.data.dataset import ConcatDataset
@@ -79,6 +80,15 @@ class AhCoreLightningModule(pl.LightningModule):
         self.predict_metadata: InferenceMetadata = self.INFERENCE_DICT  # Used for saving metadata during prediction
         self._validation_dataset: ConcatDataset | None = None
 
+        # Setup test-time augmentation
+        self._tta_augmentations = [
+            ahcore.transforms.augmentations.Identity,
+            K.augmentation.RandomHorizontalFlip(p=1.0),
+            K.augmentation.RandomVerticalFlip(p=1.0),
+        ]
+        self._use_test_time_augmentation = True
+        self._tta_steps = len(self._tta_augmentations)
+
     @property
     def wsi_metrics(self):
         return self._wsi_metrics
@@ -125,21 +135,18 @@ class AhCoreLightningModule(pl.LightningModule):
                 f"This is required during training and validation"
             )
 
-        _input = batch["image"]
         _target = batch["target"]
         # Batch size is required for accurate loss calculation and logging
-        batch_size = _input.shape[0]
+        batch_size = batch["image"].shape[0]
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        # Extract features only when not training
-        layer_names = [] if stage == TrainerFn.FITTING else self._attach_feature_layers
-        with ExtractFeaturesHook(self._model, layer_names=layer_names) as hook:
-            _prediction = self._model(_input)
-            if layer_names is not []:  # Only add the features if they are requested
-                batch["features"] = hook.features
+        if stage == TrainerFn.FITTING:
+            _prediction = self._model(batch["image"])
+            batch["prediction"] = _prediction
+        else:
+            batch = {**batch, **self._get_inference_prediction(batch["image"])}
 
-        batch["prediction"] = _prediction
         loss = self._loss(_prediction, _target, roi)
         # The relevant_dict contains values to know where the tiles originate.
         _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
@@ -156,6 +163,30 @@ class AhCoreLightningModule(pl.LightningModule):
         if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
             for robustness_metric in self._robustness_metrics:
                 robustness_metric.update(batch)
+
+        return output
+
+    def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
+        output = {}
+
+        _predictions = torch.zeros([self._tta_steps, *_input.size()], device=self.device)
+        _collected_features = None
+
+        with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
+            for idx, augmentation in enumerate(self._tta_augmentations):
+                model_prediction = self._model(augmentation(_input))
+                _predictions[idx] = augmentation.inverse(model_prediction)
+
+                if self._attach_feature_layers:
+                    _features = hook.features
+                    if _collected_features is None:
+                        _collected_features = torch.zeros([self._tta_steps, *_features.size()], device=self.device)
+                    _features[idx] = _collected_features
+
+            output["prediction"] = _predictions.mean(dim=0)
+
+        if self._attach_feature_layers:
+            output["features"] = _collected_features
 
         return output
 
