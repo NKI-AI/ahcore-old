@@ -16,6 +16,7 @@ from torch import nn
 
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -108,19 +109,19 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
     """
 
     # Normalized OD matrix from Ruifrok et al. (2001)
-    HED_REFERENCE = torch.Tensor([[0.65, 0.70, 0.29],
-                                  [0.07, 0.99, 0.11],
-                                  [0.27, 0.57, 0.78]])
+    HED_REFERENCE = torch.Tensor([[0.65, 0.70, 0.29], [0.07, 0.99, 0.11], [0.27, 0.57, 0.78]])
 
-    def __init__(self,
-                 scale_sigma: float | tuple[float, float, float],
-                 bias_sigma: float | tuple[float, float, float],
-                 epsilon: float = 1e-6,
-                 p: float = 0.5,
-                 p_batch: float = 1.0,
-                 same_on_batch=False,
-                 keepdim=False,
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        scale_sigma: float | tuple[float, float, float],
+        bias_sigma: float | tuple[float, float, float],
+        epsilon: float = 1e-6,
+        p: float = 0.5,
+        p_batch: float = 1.0,
+        same_on_batch=False,
+        keepdim=False,
+        **kwargs,
+    ) -> None:
         """
         Apply a color stain augmentation in the Hemaetoxylin-Eosin-DAB (HED) color space based on [1].
         The fixed normalized OD matrix values are based on [2].
@@ -139,9 +140,11 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         """
         super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         if (isinstance(scale_sigma, tuple) and len(scale_sigma) != 3) or (
-                isinstance(bias_sigma, tuple) and len(bias_sigma) != 3):
+            isinstance(bias_sigma, tuple) and len(bias_sigma) != 3
+        ):
             raise ValueError(
-                f"scale_sigma and bias_sigma should have either 1 or 3 values, got {scale_sigma} and {bias_sigma} instead.")
+                f"scale_sigma and bias_sigma should have either 1 or 3 values, got {scale_sigma} and {bias_sigma} instead."
+            )
 
         if isinstance(scale_sigma, float):
             scale_sigma = tuple([scale_sigma for _ in range(3)])
@@ -155,23 +158,33 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         scale_factor = torch.stack([1 - scale_sigma, 1 + scale_sigma])
         bias_factor = torch.stack([-bias_sigma, bias_sigma])
 
-        self._param_generator = rg.PlainUniformGenerator((scale_factor, 'scale', None, None),
-                                                         (bias_factor, 'bias', None, None))
-        self.flags = {'epsilon': torch.tensor([epsilon]),
-                      'M': self.HED_REFERENCE,
-                      'M_inv': torch.linalg.inv(self.HED_REFERENCE)}
+        self._param_generator = rg.PlainUniformGenerator(
+            (scale_factor, "scale", None, None), (bias_factor, "bias", None, None)
+        )
+        self.flags = {
+            "epsilon": torch.tensor([epsilon]),
+            "M": self.HED_REFERENCE,
+            "M_inv": torch.linalg.inv(self.HED_REFERENCE),
+        }
 
-    def apply_transform(self, sample: torch.Tensor, params=None, flags=None, transform=None,
-                        data_keys: list[str | int | DataKey] = None, **kwargs) -> torch.Tensor:
+    def apply_transform(
+        self,
+        sample: torch.Tensor,
+        params=None,
+        flags=None,
+        transform=None,
+        data_keys: list[str | int | DataKey] = None,
+        **kwargs,
+    ) -> torch.Tensor:
         """
         Apply HED color augmentation on an input tensor.
         """
-        epsilon = flags['epsilon'].to(sample)
-        reference_matrix = flags['M'].to(sample)
-        reference_matrix_inv = flags['M_inv'].to(sample)
+        epsilon = flags["epsilon"].to(sample)
+        reference_matrix = flags["M"].to(sample)
+        reference_matrix_inv = flags["M_inv"].to(sample)
 
-        alpha = params['scale'][:, None, None, :].to(sample)
-        beta = params['bias'][:, None, None, :].to(sample)
+        alpha = params["scale"][:, None, None, :].to(sample)
+        beta = params["bias"][:, None, None, :].to(sample)
 
         rgb_tensor = sample.permute(0, 2, 3, 1)
         optical_density = -torch.log(rgb_tensor + epsilon)

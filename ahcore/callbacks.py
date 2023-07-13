@@ -377,8 +377,8 @@ class ComputeWsiMetricsCallback(Callback):
         self._wsi_metrics = None
 
         self._validation_manifests: dict[str, ImageManifest] = {}
-        if self._save_per_image is True:
-            self._dump_list = []
+
+        self._dump_list = []
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
         has_write_h5_callback = None
@@ -398,6 +398,8 @@ class ComputeWsiMetricsCallback(Callback):
 
         self._wsi_metrics = pl_module.wsi_metrics
         self._data_description = trainer.datamodule.data_description
+        self._class_names = dict([(v, k) for k, v in self._data_description.index_map.items()])
+        self._class_names[0] = "background"
 
         # We should also attach the validation manifest to the class, but convert it to a dictionary mapping
         # the UUID
@@ -483,9 +485,8 @@ class ComputeWsiMetricsCallback(Callback):
                 wsi_metrics_dictionary["h5_fn"] = str(filename)
             for metric in self._wsi_metrics._metrics:
                 metric.get_wsi_score(str(filename))
-                # TODO: Rename the class_idx with their respective class strings.
                 wsi_metrics_dictionary[metric.name] = {
-                    class_idx: metric.wsis[str(filename)][class_idx][metric.name].item()
+                    self._class_names[class_idx]: metric.wsis[str(filename)][class_idx][metric.name].item()
                     for class_idx in range(self._data_description.num_classes)
                 }
             self._dump_list.append(wsi_metrics_dictionary)
