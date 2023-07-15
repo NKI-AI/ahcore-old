@@ -77,13 +77,13 @@ def register_parser(parser: argparse._SubParsersAction):
     )
     _parser.add_argument(
         "base_dir",
-        type=dir_path(require_writable=True),
+        type=dir_path(require_writable=False),
         help="Directory to which the paths defined in the manifest are relative to.",
     )
     _parser.add_argument(
         "dataset_name",
-        type=file_path,
-        help="Name of the dataset to copy the data to. The.",
+        type=str,
+        help="Name of the dataset to copy the data to. The data will be copied over to $SCRATCH / DATASET_NAME",
     )
 
     _parser.set_defaults(subcommand=copy_data)
