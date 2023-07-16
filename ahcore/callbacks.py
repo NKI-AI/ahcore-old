@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import json
 import logging
 import multiprocessing
 import queue
@@ -16,7 +17,6 @@ import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
 import torch.distributed as dist
-import json
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations

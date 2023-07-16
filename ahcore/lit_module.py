@@ -5,11 +5,9 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
-
-
 from typing import Any
+
 import kornia as K
-import ahcore.transforms.augmentations
 import pytorch_lightning as pl
 import torch.optim.optimizer
 from dlup.data.dataset import ConcatDataset
@@ -18,12 +16,12 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
+import ahcore.transforms.augmentations
 from ahcore.utils.data import DataDescription, InferenceMetadata
 from ahcore.utils.io import get_logger
 from ahcore.utils.model import ExtractFeaturesHook
 
 logger = get_logger(__name__)
-
 
 
 class AhCoreLightningModule(pl.LightningModule):

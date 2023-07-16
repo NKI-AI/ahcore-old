@@ -8,8 +8,8 @@ from __future__ import annotations
 from typing import cast
 
 import kornia.augmentation as K
-from kornia.augmentation import random_generator as rg
 import torch
+from kornia.augmentation import random_generator as rg
 from kornia.constants import DataKey, Resample
 from omegaconf import ListConfig
 from torch import nn
