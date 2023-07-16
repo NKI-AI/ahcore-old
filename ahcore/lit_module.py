@@ -5,6 +5,8 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
+
+
 from typing import Any
 import kornia as K
 import ahcore.transforms.augmentations
@@ -21,6 +23,7 @@ from ahcore.utils.io import get_logger
 from ahcore.utils.model import ExtractFeaturesHook
 
 logger = get_logger(__name__)
+
 
 
 class AhCoreLightningModule(pl.LightningModule):
@@ -87,7 +90,7 @@ class AhCoreLightningModule(pl.LightningModule):
             K.augmentation.RandomHorizontalFlip(p=1.0),
             K.augmentation.RandomVerticalFlip(p=1.0),
         ]
-        self._use_test_time_augmentation = True
+        self._use_test_time_augmentation = False
         self._tta_steps = len(self._tta_augmentations)
 
     @property
@@ -156,6 +159,8 @@ class AhCoreLightningModule(pl.LightningModule):
         _metrics = self._compute_metrics(_prediction, _target, roi, stage=stage)
         _loss = loss.mean()
         output = {"loss": _loss, "loss_per_sample": loss.clone().detach(), "metrics": _metrics, **_relevant_dict}
+        if stage != TrainerFn.FITTING:
+            output["prediction"] = _prediction
 
         # Log the loss
         self.log(f"{self.STAGE_MAP[stage]}/loss", _loss, batch_size=batch_size, sync_dist=True, on_epoch=True)
@@ -205,7 +210,6 @@ class AhCoreLightningModule(pl.LightningModule):
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
         output = self.do_step(batch, batch_idx, stage=TrainerFn.VALIDATING)
-        output["prediction"] = batch["prediction"]
 
         # This is a sanity check. We expect the filenames to be constant across the batch.
         filename = batch["path"][0]
