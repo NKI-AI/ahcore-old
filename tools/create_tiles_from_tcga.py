@@ -225,7 +225,7 @@ def tiling_pipeline(
     output_dir: Path,
     dataset_cfg: DatasetConfigs,
 ) -> None:
-    logger.info("Working on %s", image_path)
+    logger.info("Working on %s. Writing to %s", image_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # mask = SlideImage.from_file_path(mask_path, interpolator="NEAREST")
@@ -261,9 +261,8 @@ def tiling_pipeline(
     )
 
 
-def wrapper(dataset_cfg, args):
+def wrapper(dataset_cfg, save_dir_data, args):
     image_path, mask_path, path_id = args
-    save_dir_data = Path("path/to/save_dir")  # replace with your actual path
     _output_directory = save_dir_data / path_id
     return tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg)
 
@@ -331,7 +330,7 @@ def main():
     images_list = [list(item) for item in images_list]
 
     # Create a partially applied function with dataset_cfg
-    partial_wrapper = partial(wrapper, dataset_cfg)
+    partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data)
 
     with Pool(processes=8) as pool:
         for _ in pool.imap_unordered(partial_wrapper, images_list):
