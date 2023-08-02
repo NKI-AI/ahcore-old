@@ -207,11 +207,10 @@ class WSIDiceMetric(WSIMetric):
                 overall_dices[class_idx]["total_intersection"] += self.wsis[wsi_name][class_idx]["intersection"]
                 overall_dices[class_idx]["total_cardinality"] += self.wsis[wsi_name][class_idx]["cardinality"]
         for class_idx in overall_dices.keys():
-            overall_dices[class_idx]["overall_dice"] = _compute_dice(
-                intersection=overall_dices[class_idx]["total_intersection"],
-                cardinality=overall_dices[class_idx]["total_cardinality"],
-            )
-        return {class_idx: overall_dices[class_idx]["overall_dice"].item() for class_idx in overall_dices.keys()}
+            intersection = overall_dices[class_idx]["total_intersection"]
+            cardinality = overall_dices[class_idx]["total_cardinality"]
+            overall_dices[class_idx]["overall_dice"] = (2 * intersection + 0.01) / (cardinality + 0.01)
+        return {class_idx: torch.tensor(overall_dices[class_idx]["overall_dice"]).item() for class_idx in overall_dices.keys()}
 
     def _get_dice_averaged_over_total_wsis(self):
         """

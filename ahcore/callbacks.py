@@ -503,6 +503,9 @@ class ComputeWsiMetricsCallback(Callback):
         ) as json_file:
             json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
+        # Reset stuff
+        self._dump_list = []
+        self._filenames = {}
 
         self._logger.debug("Metrics: %s", metrics)
         pl_module.log_dict(metrics, prog_bar=True)
