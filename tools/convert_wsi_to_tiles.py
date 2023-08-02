@@ -16,7 +16,7 @@ from logging import getLogger
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Union
-
+from ahcore.cli import file_path, dir_path
 import imageio.v3 as iio
 import numpy as np
 import numpy.typing as npt
@@ -311,8 +311,16 @@ def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
 def main():
     parser = argparse.ArgumentParser("Tiling of whole slide images.")
     # Assume a comma separated format from image_file,mask_file
-    parser.add_argument("--file-list", type=Path, required=True, help="Path to the file list")
-    parser.add_argument("--output-dir", type=Path, required=True, help="Path to the output directory")
+    parser.add_argument(
+        "--file-list",
+        type=file_path,
+        required=True,
+        help="Path to the file list. Each comma-separated line is of the form `<image_fn>,<mask_fn>,<output_directory>`"
+             " where the output directory is with request to --output-dir",
+    )
+    parser.add_argument(
+        "--output-dir", type=dir_path(require_writable=True), required=True, help="Path to the output directory"
+    )
     parser.add_argument(
         "--mpp", type=float, required=True, help="Resolution (microns per pixel) at which the slides should be tiled."
     )
@@ -325,12 +333,15 @@ def main():
         help="0 every tile is discarded, 1 requires the whole tile to be foreground (default=0.6).",
     )
     parser.add_argument(
-        "--num-workers", type=int, default=1, help="Number of workers to use for tiling. " "0 disables the tiling"
+        "--num-workers",
+        type=int,
+        default=8,
+        help="Number of workers to use for tiling. 0 disables the tiling (default: 8)",
     )
     parser.add_argument(
         "--save-thumbnail",
         action="store_true",
-        help="Save a thumbnail of the slide, including" "the selected tiles and the mask itself.",
+        help="Save a thumbnail of the slide, including the filtered tiles and the mask itself.",
     )
     args = parser.parse_args()
     images_list = []
