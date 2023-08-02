@@ -19,10 +19,12 @@ from typing import Union
 
 import imageio.v3 as iio
 import numpy as np
+import numpy.typing as npt
 import PIL.Image
 from dlup import SlideImage
 from dlup.data.dataset import RegionFromSlideDatasetSample, TiledROIsSlideImageDataset
 from dlup.tiling import GridOrder, TilingMode
+from PIL import Image
 from pydantic import BaseModel
 from rich.progress import Progress
 
@@ -32,7 +34,7 @@ import sys
 logger.setLevel(logging.DEBUG)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
+handler.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -142,6 +144,37 @@ class DatasetConfigs(BaseModel):
     grid_order: str
 
 
+def _save_thumbnail(image_fn: Path, dataset_cfg: DatasetConfigs, mask: npt.NDArray[np.uint8], output_fn: Path):
+    target_mpp = max(dataset_cfg.mpp * 30, 30)
+    tile_size = (min(30, dataset_cfg.tile_size[0] // 30), min(30, dataset_cfg.tile_size[1] // 30))
+
+    dataset = TiledROIsSlideImageDataset.from_standard_tiling(
+        image_fn, target_mpp, tile_size, (0, 0), mask=mask, mask_threshold=dataset_cfg.mask_threshold
+    )
+    scaled_region_view = dataset.slide_image.get_scaled_view(dataset.slide_image.get_scaling(target_mpp))
+
+    # Let us write the mask too.
+    mask_fn = output_fn / "mask.jpg"
+    mask = PIL.Image.fromarray(mask * 255, mode="L")
+    mask.save(mask_fn, quality=75)
+
+    thumbnail = dataset.slide_image.get_thumbnail(tuple(scaled_region_view.size))
+    thumbnail_fn = output_fn / "thumbnail.jpg"
+    thumbnail.convert("RGB").save(thumbnail_fn, quality=75)
+
+    background = Image.new("RGBA", tuple(scaled_region_view.size), (255, 255, 255, 255))
+
+    for d in dataset:
+        tile = d["image"]
+        coords = np.array(d["coordinates"])
+        box = tuple(np.array((*coords, *(coords + tile_size))).astype(int))
+        background.paste(tile, box)
+        # draw = ImageDraw.Draw(background)
+        # draw.rectangle(box, outline="red")
+    overlay_fn = output_fn / "overlay.jpg"
+    background.convert("RGB").save(overlay_fn, quality=75)
+
+
 def create_slide_image_dataset(
     slide_image_path: Path,
     mask: SlideImage | np.ndarray | None,
@@ -204,10 +237,10 @@ def save_tiles(
     extension = "jpg" if quality is not None else "png"
 
     tile_meta_data_dict = defaultdict(dict)
-    slide_image_name = dataset.path.stem
+
     for idx, sample in enumerate(dataset):
         _tile_filename_suffix = "_".join([str(co) for co in sample["grid_local_coordinates"]])
-        tile_filename = f"{slide_image_name}_tile_{_tile_filename_suffix}.{extension}"
+        tile_filename = f"tile_{_tile_filename_suffix}.{extension}"
         if quality is not None:
             # If we just cast the PIL.Image to RGB, the alpha channel is set to black
             # which is a bit unnatural if you look in the image pyramid where it would be white in lower resolutions
@@ -228,12 +261,16 @@ def tiling_pipeline(
     mask_path: Path,
     output_dir: Path,
     dataset_cfg: DatasetConfigs,
+    save_thumbnail: bool = False,
 ) -> None:
     logger.debug("Working on %s. Writing to %s", image_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # mask = SlideImage.from_file_path(mask_path, interpolator="NEAREST")
     mask = read_mask(mask_path)
+
+    if save_thumbnail:
+        _save_thumbnail(image_path, dataset_cfg, mask, output_dir)
 
     dataset = create_slide_image_dataset(
         slide_image_path=image_path,
@@ -265,10 +302,10 @@ def tiling_pipeline(
     )
 
 
-def wrapper(dataset_cfg, save_dir_data, args):
+def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
     image_path, mask_path, path_id = args
     _output_directory = save_dir_data / path_id
-    return tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg)
+    return tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg, save_thumbnail)
 
 
 def main():
@@ -289,6 +326,11 @@ def main():
     )
     parser.add_argument(
         "--num-workers", type=int, default=1, help="Number of workers to use for tiling. " "0 disables the tiling"
+    )
+    parser.add_argument(
+        "--save-thumbnail",
+        action="store_true",
+        help="Save a thumbnail of the slide, including" "the selected tiles and the mask itself.",
     )
     args = parser.parse_args()
     images_list = []
@@ -331,7 +373,7 @@ def main():
         # Convert list of tuples into list of lists
         images_list = [list(item) for item in images_list]
         # Create a partially applied function with dataset_cfg
-        partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data)
+        partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data, args.save_thumbnail)
 
         with Progress() as progress:
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
@@ -343,7 +385,9 @@ def main():
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
             for idx, (image_path, mask_path, path_id) in enumerate(images_list):
                 _output_directory = save_dir_data / path_id
-                tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg)
+                tiling_pipeline(
+                    image_path, mask_path, _output_directory, dataset_cfg, save_thumbnail=args.save_thumbnail
+                )
                 progress.update(task, advance=1)
 
 
