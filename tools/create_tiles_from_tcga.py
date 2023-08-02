@@ -24,6 +24,7 @@ from dlup import SlideImage
 from dlup.data.dataset import RegionFromSlideDatasetSample, TiledROIsSlideImageDataset
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel
+from rich.progress import Progress
 
 logger = getLogger(__name__)
 import sys
@@ -208,6 +209,9 @@ def save_tiles(
         _tile_filename_suffix = "_".join([str(co) for co in sample["grid_local_coordinates"]])
         tile_filename = f"{slide_image_name}_tile_{_tile_filename_suffix}.{extension}"
         if quality is not None:
+            # If we just cast the PIL.Image to RGB, the alpha channel is set to black
+            # which is a bit unnatural if you look in the image pyramid where it would be white in lower resolutions
+            # this is why we take the following approach.
             tile = sample["image"]
             background = PIL.Image.new("RGB", tile.size, (255, 255, 255))  # Create a white background
             background.paste(tile, mask=tile.split()[3])  # Paste the image using the alpha channel as mask
@@ -225,7 +229,7 @@ def tiling_pipeline(
     output_dir: Path,
     dataset_cfg: DatasetConfigs,
 ) -> None:
-    logger.info("Working on %s. Writing to %s", image_path, output_dir)
+    logger.debug("Working on %s. Writing to %s", image_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # mask = SlideImage.from_file_path(mask_path, interpolator="NEAREST")
@@ -276,12 +280,15 @@ def main():
         "--mpp", type=float, required=True, help="Resolution (microns per pixel) at which the slides should be tiled."
     )
     parser.add_argument("--tile-size", type=int, required=True, help="Size of the tiles in pixels.")
-    parser.add_argument("--tile-overlap", type=int, default=0, help="Overlap of the tile in pixels.")
+    parser.add_argument("--tile-overlap", type=int, default=0, help="Overlap of the tile in pixels (default=0).")
     parser.add_argument(
         "--mask-threshold",
         type=float,
         default=0.6,
-        help="0 every tile is discarded, 1 requires the whole tile to be foreground.",
+        help="0 every tile is discarded, 1 requires the whole tile to be foreground (default=0.6).",
+    )
+    parser.add_argument(
+        "--num-workers", type=int, default=1, help="Number of workers to use for tiling. " "0 disables the tiling"
     )
     args = parser.parse_args()
     images_list = []
@@ -320,21 +327,24 @@ def main():
 
     write_json(obj=dataset_cfg.dict(), path=save_dir_meta / "dataset_configs.json", indent=2)
 
-    # This is if you want to apply one by one.
-    # for idx, (image_path, mask_path, path_id) in enumerate(images_list):
-    #     _output_directory = save_dir_data / path_id
-    #     tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg)
-    #
+    if args.num_workers > 0:
+        # Convert list of tuples into list of lists
+        images_list = [list(item) for item in images_list]
+        # Create a partially applied function with dataset_cfg
+        partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data)
 
-    # Convert list of tuples into list of lists
-    images_list = [list(item) for item in images_list]
-
-    # Create a partially applied function with dataset_cfg
-    partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data)
-
-    with Pool(processes=8) as pool:
-        for _ in pool.imap_unordered(partial_wrapper, images_list):
-            pass
+        with Progress() as progress:
+            task = progress.add_task("[cyan]Tiling...", total=len(images_list))
+            with Pool(processes=args.num_workers) as pool:
+                for _ in pool.imap_unordered(partial_wrapper, images_list):
+                    progress.update(task, advance=1)
+    else:
+        with Progress() as progress:
+            task = progress.add_task("[cyan]Tiling...", total=len(images_list))
+            for idx, (image_path, mask_path, path_id) in enumerate(images_list):
+                _output_directory = save_dir_data / path_id
+                tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg)
+                progress.update(task, advance=1)
 
 
 if __name__ == "__main__":
