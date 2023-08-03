@@ -42,13 +42,13 @@ class _ValidationDataset(Dataset):
     """Helper dataset to compute the validation metrics."""
 
     def __init__(
-        self,
-        data_description: Optional[DataDescription],
-        native_mpp: float,
-        reader: H5FileImageReader,
-        annotations: Optional[WsiAnnotations] = None,
-        mask: Optional[WsiAnnotations] = None,
-        region_size: tuple[int, int] = (1024, 1024),
+            self,
+            data_description: Optional[DataDescription],
+            native_mpp: float,
+            reader: H5FileImageReader,
+            annotations: Optional[WsiAnnotations] = None,
+            mask: Optional[WsiAnnotations] = None,
+            region_size: tuple[int, int] = (1024, 1024),
     ):
         """
         Parameters
@@ -175,7 +175,7 @@ class _ValidationDataset(Dataset):
         return prediction
 
     def _get_annotation_data(
-        self, coordinates: tuple[int, int]
+            self, coordinates: tuple[int, int]
     ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
         annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
         annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": annotations})[
@@ -230,7 +230,6 @@ def _get_uuid_for_filename(input_path: Path) -> str:
 
 
 def _get_output_filename(dump_dir: Path, input_path: Path, model_name: str, step: None | int | str = None) -> Path:
-
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
@@ -276,7 +275,7 @@ class WriteH5Callback(Callback):
         return self._dump_dir
 
     def on_validation_batch_end(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
@@ -291,8 +290,8 @@ class WriteH5Callback(Callback):
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
             with open(
-                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt",
-                "a",
+                    self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt",
+                    "a",
             ) as file:
                 file.write(f"{filename},{output_filename}\n")
 
@@ -412,7 +411,7 @@ class ComputeWsiMetricsCallback(Callback):
                 # TODO: Put this elsewhere
                 # In this case we need to figure it out.
                 with SlideImage.from_file_path(
-                    image_fn, backend=_ImageBackends[manifest.image[1].name]
+                        image_fn, backend=_ImageBackends[manifest.image[1].name]
                 ) as slide_image:
                     manifest.mpp = slide_image.mpp
 
@@ -423,7 +422,7 @@ class ComputeWsiMetricsCallback(Callback):
         return self._metrics
 
     def on_validation_batch_end(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
@@ -497,9 +496,9 @@ class ComputeWsiMetricsCallback(Callback):
         self.compute_metrics()
         metrics = self._wsi_metrics.get_average_score()
         with open(
-            self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
-            "w",
-            encoding="utf-8",
+                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
+                "w",
+                encoding="utf-8",
         ) as json_file:
             json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
@@ -515,7 +514,6 @@ class ComputeWsiMetricsCallback(Callback):
 
 # Separate because this cannot be pickled.
 def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_function):
-
     validation_dataset = _ValidationDataset(
         data_description=None,
         native_mpp=h5_reader.mpp,
@@ -577,7 +575,7 @@ class WriteTiffCallback(Callback):
         self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
 
     def on_validation_batch_end(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
@@ -591,8 +589,8 @@ class WriteTiffCallback(Callback):
         for image_filename, h5_filename in self._filenames.items():
             self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
             with open(
-                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt",
-                "a",
+                    self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt",
+                    "a",
             ) as file:
                 file.write(f"{image_filename},{h5_filename.with_suffix('.tiff')}\n")
             if not h5_filename.exists():
@@ -606,3 +604,4 @@ class WriteTiffCallback(Callback):
 
         for result in results:
             result.get()  # Wait for the process to complete.
+        self._filenames = {}  # Reset the filenames
