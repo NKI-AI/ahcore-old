@@ -263,6 +263,16 @@ def tiling_pipeline(
     dataset_cfg: DatasetConfigs,
     save_thumbnail: bool = False,
 ) -> None:
+    # If this file exists this function has already completed
+    relevant_keys = ["aspect_ratio", "magnification", "mpp", "size", "vendor"]
+    if (output_dir / "meta_data_original_slide.json").is_file():
+        # Let's check if we can parse it properly
+        with open(output_dir / "meta_data_original_slide.json", "r") as f:
+            data = json.load(f)
+            if all(key in data for key in relevant_keys):
+                logger.debug("Skipping %s. Already completed.", image_path)
+                return
+
     logger.debug("Working on %s. Writing to %s", image_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -316,7 +326,7 @@ def main():
         type=file_path,
         required=True,
         help="Path to the file list. Each comma-separated line is of the form `<image_fn>,<mask_fn>,<output_directory>`"
-             " where the output directory is with request to --output-dir",
+        " where the output directory is with request to --output-dir",
     )
     parser.add_argument(
         "--output-dir", type=dir_path(require_writable=True), required=True, help="Path to the output directory"
