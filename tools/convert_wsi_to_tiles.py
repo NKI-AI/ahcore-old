@@ -120,7 +120,6 @@ class TileMetaData:
     def from_sample(cls, sample: RegionFromSlideDatasetSample):
         _relevant_keys = [
             "coordinates",
-            "path",
             "region_index",
             "grid_local_coordinates",
             "grid_index",
