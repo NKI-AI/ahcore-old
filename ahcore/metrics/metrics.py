@@ -155,6 +155,7 @@ class WSIDiceMetric(WSIMetric):
         self.wsis = {}
         self.compute_overall_dice = compute_overall_dice
         self._num_classes = self._data_description.num_classes
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Invert the index map
         _index_map = {}
@@ -178,7 +179,7 @@ class WSIDiceMetric(WSIMetric):
     ) -> None:
         if wsi_name not in self.wsis:
             self._initialize_wsi_dict(wsi_name)
-        dice_components = _get_intersection_and_cardinality(predictions, target, roi, self._num_classes)
+        dice_components = _get_intersection_and_cardinality(predictions.to(self._device), target.to(self._device), roi.to(self._device), self._num_classes)
         for class_idx, (intersection, cardinality) in enumerate(dice_components):
             self.wsis[wsi_name][class_idx]["intersection"] += intersection
             self.wsis[wsi_name][class_idx]["cardinality"] += cardinality
