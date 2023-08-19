@@ -1,5 +1,13 @@
 # DINOv2: Learning Robust Visual Features without Supervision
 
+## Quickstart on Kosmos
+Use patched version, follow instructions below and run
+
+```shell
+
+torchrun --nnodes 1 --nproc_per_node 2 dinov2/train/train.py --config-file dinov2/configs/train/vitl16_short.yaml --output-dir /projects/foundational_models/dinov2/v1 train.dataset_path=ImageNet:split=TRAIN:root=/imagenet/imagenet1k/:extra=/extra_dino/
+```
+
 **[Meta AI Research, FAIR](https://ai.facebook.com/research/)**
 
 Maxime Oquab,
