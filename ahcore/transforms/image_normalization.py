@@ -441,14 +441,18 @@ class MacenkoNormalizer(nn.Module):
                     # We compute the vector at mpp = 16
                     scaling = slide_image.get_scaling(self._requested_mpp)
                     scaled_wsi = slide_image.get_scaled_view(scaling)
-                    scaled_size = slide_image.get_scaled_size(scaling)
+
+                    offset, bounds = slide_image.slide_bounds
+                    offset = tuple((np.asarray(offset) * scaling).astype(int))
+                    scaled_size = int(bounds[0] * scaling), int(bounds[1] * scaling)
                     logger.info(
                         "Computing Macenko staining vector for %s resized to %s (mpp=%s).",
                         filename,
                         scaled_size,
                         self._requested_mpp,
                     )
-                    region = TVT.PILToTensor()(scaled_wsi.read_region((0, 0), scaled_size).convert("RGB")).unsqueeze(0)
+                    region_pil = scaled_wsi.read_region(offset, scaled_size).convert("RGB")
+                    region = TVT.PILToTensor()(region_pil).unsqueeze(0)  # add batch dimension
 
                     _staining_parameters = stain_computer.fit(wsi=region, wsi_name=Path(filename).stem)
                     he = _staining_parameters["wsi_staining_vectors"]
