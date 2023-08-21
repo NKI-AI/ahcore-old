@@ -443,7 +443,7 @@ class MacenkoNormalizer(nn.Module):
                     scaled_wsi = slide_image.get_scaled_view(scaling)
 
                     offset, bounds = slide_image.slide_bounds
-                    offset = tuple((np.asarray(offset) * scaling).astype(int))
+                    offset = tuple((torch.tensor(offset) * scaling).to(torch.int))
                     scaled_size = int(bounds[0] * scaling), int(bounds[1] * scaling)
                     logger.info(
                         "Computing Macenko staining vector for %s resized to %s (mpp=%s).",
