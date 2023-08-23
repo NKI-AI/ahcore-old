@@ -16,7 +16,7 @@ from logging import getLogger
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Union
-from ahcore.cli import file_path, dir_path
+
 import imageio.v3 as iio
 import numpy as np
 import numpy.typing as npt
@@ -27,6 +27,8 @@ from dlup.tiling import GridOrder, TilingMode
 from PIL import Image
 from pydantic import BaseModel
 from rich.progress import Progress
+
+from ahcore.cli import dir_path, file_path
 
 logger = getLogger(__name__)
 import sys
@@ -109,8 +111,6 @@ class SlideImageMetaData:
 @dataclass()
 class TileMetaData:
     """Metadata of a tile."""
-
-    path: Path
     coordinates: tuple[int, int]
     region_index: int
     grid_local_coordinates: tuple[int, int]
@@ -239,7 +239,7 @@ def save_tiles(
 
     for idx, sample in enumerate(dataset):
         _tile_filename_suffix = "_".join([str(co) for co in sample["grid_local_coordinates"]])
-        tile_filename = f"tile_{_tile_filename_suffix}.{extension}"
+        tile_filename = f"img_{idx}.{extension}"
         if quality is not None:
             # If we just cast the PIL.Image to RGB, the alpha channel is set to black
             # which is a bit unnatural if you look in the image pyramid where it would be white in lower resolutions
@@ -272,20 +272,25 @@ def tiling_pipeline(
                 logger.debug("Skipping %s. Already completed.", image_path)
                 return
 
+    try:
+        # TODO: Come up with a way to inject the mask later on as well.
+        mask = read_mask(mask_path)
+        dataset = create_slide_image_dataset(
+            slide_image_path=image_path,
+            mask=mask,
+            cfg=dataset_cfg,
+        )
+    except Exception as e:
+        logger.error(f"Failed: {image_path} with exception {e}")
+        return
+
     logger.debug("Working on %s. Writing to %s", image_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # mask = SlideImage.from_file_path(mask_path, interpolator="NEAREST")
-    mask = read_mask(mask_path)
 
     if save_thumbnail:
         _save_thumbnail(image_path, dataset_cfg, mask, output_dir)
-
-    dataset = create_slide_image_dataset(
-        slide_image_path=image_path,
-        mask=mask,
-        cfg=dataset_cfg,
-    )
 
     _tile_meta_data_dict = save_tiles(dataset=dataset, save_dir=output_dir)
     _scaling = dataset.slide_image.get_scaling(dataset_cfg.mpp)
@@ -309,7 +314,6 @@ def tiling_pipeline(
         path=output_dir / "meta_data_original_slide.json",
         indent=2,
     )
-
 
 def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
     image_path, mask_path, path_id = args
@@ -352,12 +356,20 @@ def main():
         action="store_true",
         help="Save a thumbnail of the slide, including the filtered tiles and the mask itself.",
     )
+    parser.add_argument(
+        "--simple-check",
+        action="store_true",
+        help="Filter the list based on if the folders already exist.",
+    )
+
     args = parser.parse_args()
     images_list = []
 
     with open(args.file_list, "r") as file_list:
         for line in file_list:
             image_file, mask_file, output_directory = line.split(",")
+            if (args.output_dir / "data" / Path(output_directory.strip())).is_dir() and args.simple_check:
+                continue
             images_list.append((Path(image_file.strip()), Path(mask_file.strip()), Path(output_directory.strip())))
 
     logger.info(f"Number of slides: {len(images_list)}")
@@ -367,7 +379,7 @@ def main():
     save_dir_data = args.output_dir / "data"
     save_dir_data.mkdir(parents=True, exist_ok=True)
 
-    save_dir_meta = args.output_dir / "meta"
+    save_dir_meta = args.output_dir / "metadata"
     save_dir_meta.mkdir(parents=True, exist_ok=True)
 
     crop = False
