@@ -5,11 +5,8 @@ import concurrent.futures
 import hashlib
 import json
 import logging
-import multiprocessing
-import queue
-import threading
+from multiprocessing import Process, Queue, Semaphore, Pipe, Pool
 from pathlib import Path
-from threading import Semaphore
 from typing import Iterator, Optional, TypedDict
 
 import numpy as np
@@ -201,9 +198,10 @@ class _ValidationDataset(Dataset):
 
 
 class _WriterMessage(TypedDict):
-    queue: queue.Queue
+    queue: Queue
     writer: H5FileImageWriter
-    thread: threading.Thread
+    process: Process
+    connection: Pipe
 
 
 def _get_uuid_for_filename(input_path: Path) -> str:
@@ -266,6 +264,45 @@ class WriteH5Callback(Callback):
 
         self._logger = get_logger(type(self).__name__)
 
+    def __check_process(self) -> bool | None:
+        """
+        This module communicates with all the child processes spawned by the main process while writing h5 files.
+        It monitors if the target function of the child process has been correctly executed.
+
+        Returns
+        -------
+        bool | None
+        """
+        connection = self._writers[self._current_filename]["connection"]
+        if connection.poll():  # Check if there's a message from the child process
+            status, filename, message = connection.recv()  # Receive the message
+            if status is True:
+                self._logger.debug(f"Successfully processed {self._current_filename}")
+            elif status is False:
+                raise Exception(f"Failed processing {self._current_filename} due to {message}")
+            connection.close()
+            return status
+        else:
+            # Sometimes, we may encounter EOF if the communication from the child process has already been processed.
+            return None
+
+    def __process_management(self) -> None:
+        """
+        Handle the graceful termination of multiple processes at the end of h5 writing.
+        This block ensures proper release of resources allocated during multiprocessing.
+
+        Returns
+        -------
+        None
+        """
+        self._writers[self._current_filename]["queue"].put(None)
+        self._writers[self._current_filename]["process"].join()
+        self.__check_process()
+        self._writers[self._current_filename]["process"].terminate()
+        self._writers[self._current_filename]["process"].close()
+        self._writers[self._current_filename]["queue"].close()
+
+
     @property
     def writers(self):
         return self._writers
@@ -297,15 +334,12 @@ class WriteH5Callback(Callback):
 
             self._logger.debug("%s -> %s", filename, output_filename)
             if self._current_filename is not None:
-                self._writers[self._current_filename]["queue"].put_nowait(None)  # Add None to writer's queue
-                self._writers[self._current_filename]["thread"].join()
+                self.__process_management()
                 self._semaphore.release()
 
             self._semaphore.acquire()
-
             current_dataset, _ = pl_module.validation_dataset.index_to_dataset(self._validation_index)
             slide_image = current_dataset.slide_image
-
             mpp = pl_module.data_description.inference_grid.mpp
             size = slide_image.get_scaled_size(slide_image.get_scaling(mpp))
             num_samples = len(current_dataset)
@@ -314,7 +348,8 @@ class WriteH5Callback(Callback):
             tile_size = pl_module.data_description.inference_grid.tile_size
             tile_overlap = pl_module.data_description.inference_grid.tile_overlap
 
-            new_queue = queue.Queue()
+            new_queue = Queue()
+            parent_conn, child_conn = Pipe()
             new_writer = H5FileImageWriter(
                 output_filename,
                 size=size,
@@ -324,27 +359,29 @@ class WriteH5Callback(Callback):
                 num_samples=num_samples,
                 progress=None,
             )
-            new_thread = threading.Thread(target=new_writer.consume, args=(self.generator(new_queue),))
-            new_thread.start()
-            self._writers[filename] = {"queue": new_queue, "writer": new_writer, "thread": new_thread}
+            new_process = Process(target=new_writer.consume, args=(self.generator(new_queue), child_conn))
+            new_process.start()
+            self._writers[filename] = {"queue": new_queue, "writer": new_writer, "process": new_process, "connection": parent_conn}
             self._current_filename = filename
 
         prediction = outputs["prediction"].detach().cpu().numpy()
-
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
-        self._writers[filename]["queue"].put_nowait((coordinates, prediction))
+        self._writers[filename]["queue"].put((coordinates, prediction))
         self._validation_index += prediction.shape[0]
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         if self._current_filename is not None:
-            self._writers[self._current_filename]["queue"].put_nowait(None)
-            self._writers[self._current_filename]["thread"].join()
+            self.__process_management()
             self._semaphore.release()
             self._validation_index = 0
+        # Reset current filename to None for correct execution of subsequent validation loop
+        self._current_filename = None
+        # Clear all the writers from the current epoch
+        self._writers = {}
 
     @staticmethod
-    def generator(queue: queue.Queue):
+    def generator(queue: Queue):
         while True:
             batch = queue.get()
             if batch is None:
@@ -508,8 +545,6 @@ class ComputeWsiMetricsCallback(Callback):
 
         self._logger.debug("Metrics: %s", metrics)
         pl_module.log_dict(metrics, prog_bar=True)
-        # TODO(jt): I think this is not strictly required.
-        # trainer.logger.log_metrics(metrics, step=trainer.global_step)
 
 
 # Separate because this cannot be pickled.
@@ -549,7 +584,7 @@ def tile_process_function(x):
 
 class WriteTiffCallback(Callback):
     def __init__(self, max_concurrent_writers: int):
-        self._pool = multiprocessing.Pool(max_concurrent_writers)
+        self._pool = Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
         self._dump_dir = None
         self.__write_h5_callback_index = -1

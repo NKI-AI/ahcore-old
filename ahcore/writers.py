@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from dlup.tiling import Grid, GridOrder, TilingMode
+from multiprocessing import Pipe
 
 from ahcore.utils.io import get_logger
 
@@ -40,7 +41,7 @@ class H5FileImageWriter:
         self._tile_indices: Optional[h5py.Dataset] = None
         self._current_index: int = 0
 
-        self._logger = get_logger(type(self).__name__)
+        self._logger = logger  # maybe not the best way, think about it
         self._logger.debug("Writing h5 to %s", self._filename)
 
     def init_writer(self, first_batch: np.ndarray, h5file: h5py.File) -> None:
@@ -102,7 +103,7 @@ class H5FileImageWriter:
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
-    def consume(self, batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None]) -> None:
+    def consume(self, batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None], connection_to_parent: Pipe) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
         grid_counter = 0
         try:
@@ -135,9 +136,13 @@ class H5FileImageWriter:
 
         except Exception as e:
             self._logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
-
-        # When done writing rename the file.
-        self._filename.with_suffix(".h5.partial").rename(self._filename)
+            connection_to_parent.send((False, self._filename, e))  # Send a message to the parent
+        else:
+            # When done writing rename the file.
+            self._filename.with_suffix(".h5.partial").rename(self._filename)
+        finally:
+            connection_to_parent.send((True, None, None))
+            connection_to_parent.close()
 
     @staticmethod
     def _batch_generator(first_coordinates_batch, batch_generator):
