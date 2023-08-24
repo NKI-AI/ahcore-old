@@ -42,13 +42,13 @@ def process_svs_folder(args):
                             f.write(f"{svs_folder},broken_jpeg\n")
                     return
 
-                    
+
 def detect_problems():
     parser = argparse.ArgumentParser("Tiling of whole slide images.")
     # Assume a comma separated format from image_file,mask_file
     parser.add_argument(
         "ROOT",
-        type=dir_path,
+        type=dir_path(require_writable=False),
         help="Path to the output folder",
     )
     parser.add_argument(
@@ -59,7 +59,7 @@ def detect_problems():
     args = parser.parse_args()
 
     root_folder = args.ROOT
-    svs_folders = list(root_folder.glob("*/*.svs"))
+    svs_folders = list((root_folder / "data").glob("*/*.svs"))
 
     if args.num_workers == 0:
         for folder in tqdm.tqdm(svs_folders):

@@ -15,6 +15,7 @@ from functools import partial
 from logging import getLogger
 from multiprocessing import Pool
 from pathlib import Path
+from pprint import pformat
 from typing import Union
 
 import imageio.v3 as iio
@@ -111,6 +112,7 @@ class SlideImageMetaData:
 @dataclass()
 class TileMetaData:
     """Metadata of a tile."""
+
     coordinates: tuple[int, int]
     region_index: int
     grid_local_coordinates: tuple[int, int]
@@ -315,6 +317,7 @@ def tiling_pipeline(
         indent=2,
     )
 
+
 def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
     image_path, mask_path, path_id = args
     _output_directory = save_dir_data / path_id
@@ -398,6 +401,8 @@ def main():
         mask_threshold=mask_threshold,
         grid_order="C",
     )
+
+    logger.info(f"Dataset configurations: {pformat(dataset_cfg)}")
 
     write_json(obj=dataset_cfg.dict(), path=save_dir_meta / "dataset_configs.json", indent=2)
 
