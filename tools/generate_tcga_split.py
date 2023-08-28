@@ -65,6 +65,19 @@ class DatabaseManager:
             """
             )
 
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS split_info (
+                    id INTEGER PRIMARY KEY,
+                    folder_id INTEGER NOT NULL,
+                    split TEXT NOT NULL,
+                    version TEXT,
+                    description TEXT,
+                    FOREIGN KEY (folder_id) REFERENCES folder_info(id)
+                );
+            """
+            )
+
     def insert_folder_info(self, folder_infos: list[FolderInfo]):
         with self._connect() as connection:
             cursor = connection.cursor()
@@ -152,7 +165,7 @@ if __name__ == "__main__":
         patient_id = get_patient_id(folder_path)  # Add this line
         info = FolderInfo(
             path=str(folder_path.relative_to(original_path)), num_files=num_files, patient_id=patient_id
-        )  # Update this line
+        )
         infos_to_insert.append(info)
 
         if len(infos_to_insert) >= 100:
