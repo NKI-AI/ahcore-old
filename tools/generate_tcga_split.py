@@ -20,11 +20,38 @@ class FolderInfo(BaseModel):
     patient_id: str
 
 
-class SplitInfo(BaseModel):
-    folder_id: int
-    split: str
+class SplitDefinition(BaseModel):
     version: str
     description: str
+
+
+class SplitInfo(BaseModel):
+    folder_id: int
+    split_definition_id: int
+    category: str  # This will hold either "train", "test", or "validate"
+
+
+class PatientLabelInfo(BaseModel):
+    patient_id: str
+    label_slug: str
+    label_value: str
+
+
+class PatientLabelAssignment(BaseModel):
+    patient_id: str
+    label_slug: str
+    label_value: str
+
+
+class LabelCategoryInfo(BaseModel):
+    description: str
+    slug: str
+    values: list[str]
+
+
+class LabelValueInfo(BaseModel):
+    category_slug: str
+    value: str
 
 
 def get_patient_id(path: Path) -> str:
@@ -65,17 +92,64 @@ class DatabaseManager:
             """
             )
 
+            # split_definitions table to hold version and description
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS split_definitions (
+                    id INTEGER PRIMARY KEY,
+                    version TEXT NOT NULL,
+                    description TEXT
+                );
+            """
+            )
+
+            # split_info table
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS split_info (
                     id INTEGER PRIMARY KEY,
                     folder_id INTEGER NOT NULL,
-                    split TEXT NOT NULL,
-                    version TEXT,
-                    description TEXT,
-                    FOREIGN KEY (folder_id) REFERENCES folder_info(id)
+                    split_definition_id INTEGER NOT NULL,
+                    category TEXT NOT NULL, -- This will hold either "train", "test", or "validate"
+                    FOREIGN KEY (folder_id) REFERENCES folder_info(id),
+                    FOREIGN KEY (split_definition_id) REFERENCES split_definitions(id)
                 );
             """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS label_categories (
+                    id INTEGER PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    slug TEXT UNIQUE NOT NULL
+                );
+            """
+            )
+
+            # label_values table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS label_values (
+                    id INTEGER PRIMARY KEY,
+                    category_id INTEGER NOT NULL,
+                    value TEXT NOT NULL,
+                    FOREIGN KEY (category_id) REFERENCES label_categories(id)
+                );
+            """
+            )
+
+            # label mapping table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS patient_labels (
+                    id INTEGER PRIMARY KEY,
+                    patient_id INTEGER NOT NULL,
+                    label_value_id INTEGER NOT NULL,
+                    FOREIGN KEY (patient_id) REFERENCES patients(id),
+                    FOREIGN KEY (label_value_id) REFERENCES label_values(id)
+                );
+                """
             )
 
     def insert_folder_info(self, folder_infos: list[FolderInfo]):
@@ -101,17 +175,21 @@ class DatabaseManager:
                 )
 
     def create_random_split(self, version, split_ratios, description=""):
-        # if sum(split_ratios) != 1.0:
-        #     raise ValueError("Split ratios must sum up to 1.")
-
         with self._connect() as connection:
             cursor = connection.cursor()
 
             # Check if this version already exists to avoid duplicate splits
-            cursor.execute("SELECT DISTINCT version FROM split_info WHERE version = ?", (version,))
-            if cursor.fetchone():
+            cursor.execute("SELECT id FROM split_definitions WHERE version = ?", (version,))
+            row = cursor.fetchone()
+
+            if row:
                 print(f"Split version '{version}' already exists. Skipping...")
                 return
+
+            cursor.execute(
+                "INSERT INTO split_definitions (version, description) VALUES (?, ?)", (version, description)
+            )
+            split_definition_id = cursor.lastrowid
 
             # Fetch all distinct patient IDs
             cursor.execute("SELECT DISTINCT patient_id FROM folder_info")
@@ -131,9 +209,9 @@ class DatabaseManager:
             validate_ids = self._get_folder_ids_for_patients(cursor, validate_patient_ids)
 
             # Insert into the split_info table
-            self._insert_into_split(cursor, train_ids, "train", version, description)
-            self._insert_into_split(cursor, test_ids, "test", version, description)
-            self._insert_into_split(cursor, validate_ids, "validate", version, description)
+            self._insert_into_split(cursor, train_ids, "train", split_definition_id)
+            self._insert_into_split(cursor, test_ids, "test", split_definition_id)
+            self._insert_into_split(cursor, validate_ids, "validate", split_definition_id)
 
     @staticmethod
     def _get_folder_ids_for_patients(cursor, patient_ids):
@@ -142,17 +220,76 @@ class DatabaseManager:
         return [row[0] for row in cursor.fetchall()]
 
     @staticmethod
-    def _insert_into_split(cursor, ids, split_name, version, description):
+    def _insert_into_split(cursor, ids, category, split_definition_id):
         for folder_id in ids:
-            data = SplitInfo(folder_id=folder_id, split=split_name, version=version, description=description)
+            data = SplitInfo(folder_id=folder_id, split_definition_id=split_definition_id, category=category)
             cursor.execute(
-                "INSERT INTO split_info (folder_id, split, version, description) VALUES (?, ?, ?, ?)",
-                (data.folder_id, data.split, data.version, data.description),
+                "INSERT INTO split_info (folder_id, category, split_definition_id) VALUES (?, ?, ?)",
+                (data.folder_id, data.category, data.split_definition_id),
+            )
+
+    def insert_label_category(self, category_info: LabelCategoryInfo):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "INSERT INTO label_categories (description, slug) VALUES (?, ?)",
+                (category_info.description, category_info.slug),
+            )
+
+    def insert_label_value(self, value_info: LabelValueInfo):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            # Fetch the category_id based on the slug
+            cursor.execute("SELECT id FROM label_categories WHERE slug = ?", (value_info.category_slug,))
+            row = cursor.fetchone()
+            if not row:
+                print(f"No category found for slug '{value_info.category_slug}'. Skipping...")
+                return
+
+            category_id = row[0]
+            cursor.execute(
+                "INSERT INTO label_values (category_id, value) VALUES (?, ?)", (category_id, value_info.value)
+            )
+
+    def assign_label_to_patient(self, patient_label_info: PatientLabelInfo):
+        """
+        Assigns a label to a patient using a PatientLabelInfo model.
+
+        :param patient_label_info: The info about the patient and label to assign.
+        """
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            # Fetch label_value_id using slug and label_value
+            cursor.execute(
+                """
+                SELECT lv.id
+                FROM label_values lv
+                JOIN label_categories lc ON lv.category_id = lc.id
+                WHERE lc.slug = ? AND lv.value = ?
+                """,
+                (patient_label_info.label_slug, patient_label_info.label_value),
+            )
+            label_value_id = cursor.fetchone()
+
+            if not label_value_id:
+                raise ValueError(
+                    f"Label '{patient_label_info.label_value}' for slug '{patient_label_info.label_slug}' not found."
+                )
+            label_value_id = label_value_id[0]
+
+            # Insert the relation
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO patient_labels (patient_id, label_value_id)
+                VALUES (?, ?)
+                """,
+                (patient_label_info.patient_id, label_value_id),
             )
 
 
-if __name__ == "__main__":
-    db = DatabaseManager()
+def init_database(db):
     db.create_tables()
 
     original_path = Path("/projects/tcga_tiled/v1/data")
@@ -160,17 +297,19 @@ if __name__ == "__main__":
     all_tcgas = original_path.glob("*/*")
     infos_to_insert = []
 
-    for folder_path in tqdm(all_tcgas):
+    for idx, folder_path in tqdm(enumerate(all_tcgas)):
         num_files = find_number_of_tiles(folder_path)
-        patient_id = get_patient_id(folder_path)  # Add this line
-        info = FolderInfo(
-            path=str(folder_path.relative_to(original_path)), num_files=num_files, patient_id=patient_id
-        )
+        patient_id = get_patient_id(folder_path)
+        info = FolderInfo(path=str(folder_path.relative_to(original_path)), num_files=num_files, patient_id=patient_id)
         infos_to_insert.append(info)
 
         if len(infos_to_insert) >= 100:
             db.insert_folder_info(infos_to_insert)
             infos_to_insert = []
+
+        # Easy for debugging.
+        # if idx > 100:
+        #     break
 
     if infos_to_insert:
         db.insert_folder_info(infos_to_insert)
@@ -178,3 +317,63 @@ if __name__ == "__main__":
     # Assign splits based on different versions and ratios
     db.create_random_split("v1", (0.8, 0.1, 0.1), "80/10/10 split")
     db.create_random_split("v2", (0.7, 0.2, 0.1), "70/20/10 split")
+
+
+def populate_label_categories_and_values_with_dummies(db: DatabaseManager):
+    # Defining categories and their respective values
+    categories = [
+        LabelCategoryInfo(description="Tumor Type", slug="tumor_type", values=["Melanoma", "Carcinoma", "Sarcoma"]),
+        LabelCategoryInfo(description="Tumor Stage", slug="tumor_stage", values=["I", "II", "III", "IV"]),
+        LabelCategoryInfo(
+            description="Treatment Response", slug="treatment_response", values=["Positive", "Negative", "Neutral"]
+        ),
+    ]
+
+    # Inserting the categories and their values into the database
+    for category_data in categories:
+        db.insert_label_category(category_data)  # Corrected this line
+        for value in category_data.values:
+            value_info = LabelValueInfo(category_slug=category_data.slug, value=value)
+            db.insert_label_value(value_info)  # Corrected this line
+
+
+def assign_dummy_labels_to_patients(db: DatabaseManager):
+    # Dummy label assignments for demonstration purposes
+    dummy_assignments = (
+        [
+            PatientLabelAssignment(
+                patient_id=str(i),
+                label_slug="tumor_type",
+                label_value=random.choice(["Melanoma", "Carcinoma", "Sarcoma"]),
+            )
+            for i in range(1, 11)
+        ]
+        + [
+            PatientLabelAssignment(
+                patient_id=str(i), label_slug="tumor_stage", label_value=random.choice(["I", "II", "III", "IV"])
+            )
+            for i in range(1, 11)
+        ]
+        + [
+            PatientLabelAssignment(
+                patient_id=str(i),
+                label_slug="treatment_response",
+                label_value=random.choice(["Positive", "Negative", "Neutral"]),
+            )
+            for i in range(1, 11)
+        ]
+    )
+
+    # Assign the labels to the patients
+    for assignment in dummy_assignments:
+        label_info = PatientLabelInfo(
+            patient_id=assignment.patient_id, label_slug=assignment.label_slug, label_value=assignment.label_value
+        )
+        db.assign_label_to_patient(label_info)
+
+
+if __name__ == "__main__":
+    db = DatabaseManager()
+    init_database(db)
+    populate_label_categories_and_values_with_dummies(db)
+    assign_dummy_labels_to_patients(db)
