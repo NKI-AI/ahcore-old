@@ -3,15 +3,23 @@ import json
 import random
 import sqlite3
 from pathlib import Path
+from typing import Generator
 
 from pydantic import BaseModel
 from tqdm import tqdm
+
+BATCH_INSERT_SIZE = 100
 
 
 def find_number_of_tiles(folder_path: Path) -> int:
     with open(folder_path / "meta_data_tiles.json") as json_file:
         meta_data_tiles = json.load(json_file)
         return meta_data_tiles["num_regions_masked"]
+
+
+class PatientInfo(BaseModel):
+    patient_id: int
+    patient_name: str
 
 
 class FolderInfo(BaseModel):
@@ -63,7 +71,10 @@ class DatabaseManager:
         self.db_name = db_name
 
     def _connect(self):
-        return sqlite3.connect(self.db_name)
+        connection = sqlite3.connect(self.db_name)
+        # Enabling foreign key constraints
+        connection.execute("PRAGMA foreign_keys = ON;")
+        return connection
 
     def create_tables(self):
         with self._connect() as connection:
@@ -174,7 +185,7 @@ class DatabaseManager:
                     (info.path, info.num_files, patient_db_id),
                 )
 
-    def create_random_split(self, version, split_ratios, description=""):
+    def create_random_split(self, version, split_ratios, description="", patients_generator=None):
         with self._connect() as connection:
             cursor = connection.cursor()
 
@@ -191,9 +202,12 @@ class DatabaseManager:
             )
             split_definition_id = cursor.lastrowid
 
-            # Fetch all distinct patient IDs
-            cursor.execute("SELECT DISTINCT patient_id FROM folder_info")
-            patient_ids = [row[0] for row in cursor.fetchall()]
+            # Fetch patients either from the generator or all distinct patient IDs if the generator is not provided
+            if patients_generator:
+                patient_ids = [patient_info.patient_id for patient_info in patients_generator]
+            else:
+                cursor.execute("SELECT DISTINCT patient_id FROM folder_info")
+                patient_ids = [row[0] for row in cursor.fetchall()]
 
             random.shuffle(patient_ids)
 
@@ -288,10 +302,37 @@ class DatabaseManager:
                 (patient_label_info.patient_id, label_value_id),
             )
 
+    def get_patients_by_label_category(self, label_category: LabelCategoryInfo) -> Generator[PatientInfo, None, None]:
+        with self._connect() as connection:
+            cursor = connection.cursor()
 
-def init_database(db):
-    db.create_tables()
+            # First, we need to fetch the ID for the given label category slug
+            cursor.execute("SELECT id FROM label_categories WHERE slug = ?", (label_category.slug,))
+            category_id = cursor.fetchone()
 
+            if not category_id:
+                raise ValueError(f"No category found for slug '{label_category.slug}'.")
+
+            category_id = category_id[0]
+
+            # Next, fetch patient IDs that have a label associated with this category
+            cursor.execute(
+                """
+                SELECT p.id, p.patient_id
+                FROM patients p
+                JOIN patient_labels pl ON p.id = pl.patient_id
+                JOIN label_values lv ON pl.label_value_id = lv.id
+                WHERE lv.category_id = ?
+                """,
+                (category_id,),
+            )
+
+            # Fetching patients and yielding as generator
+            for row in cursor.fetchall():
+                yield PatientInfo(id=row[0], patient_id=row[1])
+
+
+def populate_with_tcga_tiled(db):
     original_path = Path("/projects/tcga_tiled/v1/data")
 
     all_tcgas = original_path.glob("*/*")
@@ -303,7 +344,7 @@ def init_database(db):
         info = FolderInfo(path=str(folder_path.relative_to(original_path)), num_files=num_files, patient_id=patient_id)
         infos_to_insert.append(info)
 
-        if len(infos_to_insert) >= 100:
+        if len(infos_to_insert) >= BATCH_INSERT_SIZE:
             db.insert_folder_info(infos_to_insert)
             infos_to_insert = []
 
@@ -313,10 +354,6 @@ def init_database(db):
 
     if infos_to_insert:
         db.insert_folder_info(infos_to_insert)
-
-    # Assign splits based on different versions and ratios
-    db.create_random_split("v1", (0.8, 0.1, 0.1), "80/10/10 split")
-    db.create_random_split("v2", (0.7, 0.2, 0.1), "70/20/10 split")
 
 
 def populate_label_categories_and_values_with_dummies(db: DatabaseManager):
@@ -331,10 +368,10 @@ def populate_label_categories_and_values_with_dummies(db: DatabaseManager):
 
     # Inserting the categories and their values into the database
     for category_data in categories:
-        db.insert_label_category(category_data)  # Corrected this line
+        db.insert_label_category(category_data)
         for value in category_data.values:
             value_info = LabelValueInfo(category_slug=category_data.slug, value=value)
-            db.insert_label_value(value_info)  # Corrected this line
+            db.insert_label_value(value_info)
 
 
 def assign_dummy_labels_to_patients(db: DatabaseManager):
@@ -374,6 +411,20 @@ def assign_dummy_labels_to_patients(db: DatabaseManager):
 
 if __name__ == "__main__":
     db = DatabaseManager()
-    init_database(db)
+    db.create_tables()
+    populate_with_tcga_tiled(db)
+
+    # Assign splits based on different versions and ratios
+    db.create_random_split("v1", (0.8, 0.1, 0.1), "80/10/10 split")
+    db.create_random_split("v2", (0.7, 0.2, 0.1), "70/20/10 split")
+
     populate_label_categories_and_values_with_dummies(db)
     assign_dummy_labels_to_patients(db)
+
+    # Example, get all patients with a specific label.
+    label_category = LabelCategoryInfo(
+        description="Tumor Type", slug="tumor_type", values=["Melanoma", "Carcinoma", "Sarcoma"]
+    )
+    filtered_patients = db.get_patients_by_label_category(label_category)
+    # Create split that has the patients in there
+    db.create_random_split("v3", (0.8, 0.1, 0.1), "label split", filtered_patients)
