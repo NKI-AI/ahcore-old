@@ -99,7 +99,7 @@ if __name__ == "__main__":
     tcga_study_codes = get_tcga_study_code_mapping()
 
     # Now we need to map identifer/tcga-code to the label.
-    with open("tcga_files_to_study_types.2023-08-20.json", "r", encoding="utf-8") as json_file:
+    with open("database_label_data/tcga_files_to_study_types.2023-08-20.json", "r", encoding="utf-8") as json_file:
         tcga_files_to_study_types = json.load(json_file)
 
     generate_labels(tcga_files_to_study_types, tcga_study_codes)
