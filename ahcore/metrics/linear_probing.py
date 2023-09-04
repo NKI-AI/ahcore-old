@@ -27,7 +27,10 @@ class LinearProbing(nn.Module):
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """runs the linear probing"""
-        input_np, target_np = input.detach().cpu().numpy(), target.detach().cpu().numpy()
+        input_np, target_np = (
+            input.detach().cpu().numpy(),
+            target.detach().cpu().numpy(),
+        )
         # ensure stratified splitting of target classes
         splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.test_size)
         indices_train, indices_test = next(splitter.split(input_np, target_np))

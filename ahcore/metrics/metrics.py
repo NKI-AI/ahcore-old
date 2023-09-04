@@ -179,7 +179,12 @@ class WSIDiceMetric(WSIMetric):
     ) -> None:
         if wsi_name not in self.wsis:
             self._initialize_wsi_dict(wsi_name)
-        dice_components = _get_intersection_and_cardinality(predictions.to(self._device), target.to(self._device), roi.to(self._device), self._num_classes)
+        dice_components = _get_intersection_and_cardinality(
+            predictions.to(self._device),
+            target.to(self._device),
+            roi.to(self._device),
+            self._num_classes,
+        )
         for class_idx, (intersection, cardinality) in enumerate(dice_components):
             self.wsis[wsi_name][class_idx]["intersection"] += intersection
             self.wsis[wsi_name][class_idx]["cardinality"] += cardinality
@@ -200,7 +205,11 @@ class WSIDiceMetric(WSIMetric):
             Dictionary with the overall dice scores across wsis per class
         """
         overall_dices = {
-            class_idx: {"total_intersection": 0, "total_cardinality": 0, "overall_dice": 0}
+            class_idx: {
+                "total_intersection": 0,
+                "total_cardinality": 0,
+                "overall_dice": 0,
+            }
             for class_idx in range(self._num_classes)
         }
         for wsi_name in self.wsis:
@@ -211,7 +220,10 @@ class WSIDiceMetric(WSIMetric):
             intersection = overall_dices[class_idx]["total_intersection"]
             cardinality = overall_dices[class_idx]["total_cardinality"]
             overall_dices[class_idx]["overall_dice"] = (2 * intersection + 0.01) / (cardinality + 0.01)
-        return {class_idx: torch.tensor(overall_dices[class_idx]["overall_dice"]).item() for class_idx in overall_dices.keys()}
+        return {
+            class_idx: torch.tensor(overall_dices[class_idx]["overall_dice"]).item()
+            for class_idx in overall_dices.keys()
+        }
 
     def _get_dice_averaged_over_total_wsis(self):
         """
@@ -272,7 +284,11 @@ class WSIMetricFactory:
         raise NotImplementedError
 
     def process_batch(
-        self, predictions: torch.Tensor, target: torch.Tensor, wsi_name: str, roi: torch.Tensor | None
+        self,
+        predictions: torch.Tensor,
+        target: torch.Tensor,
+        wsi_name: str,
+        roi: torch.Tensor | None,
     ) -> None:
         for metric in self._metrics:
             metric.process_batch(predictions, target, wsi_name=wsi_name, roi=roi)
@@ -292,7 +308,10 @@ class WSIMetricFactory:
 
 
 def _get_intersection_and_cardinality(
-    predictions: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None, num_classes: int
+    predictions: torch.Tensor,
+    target: torch.Tensor,
+    roi: torch.Tensor | None,
+    num_classes: int,
 ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     soft_predictions = F.softmax(predictions, dim=1)
     # if roi is not None:

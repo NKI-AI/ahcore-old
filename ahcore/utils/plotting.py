@@ -82,11 +82,20 @@ def plot_2d(
                 r = 10
                 x, y = data.coords[0]
                 _points = [(x - r, y - r), (x + r, y + r)]
-                draw.ellipse(_points, outline=_get_geometries_color(data.label), width=geometries_width)
+                draw.ellipse(
+                    _points,
+                    outline=_get_geometries_color(data.label),
+                    width=geometries_width,
+                )
 
             elif isinstance(data, Polygon):
                 coordinates = data.exterior.coords
-                draw.polygon(coordinates, fill=None, outline=_get_geometries_color(data.label), width=geometries_width)
+                draw.polygon(
+                    coordinates,
+                    fill=None,
+                    outline=_get_geometries_color(data.label),
+                    width=geometries_width,
+                )
 
             else:
                 raise RuntimeError(f"Type {type(data)} not implemented.")

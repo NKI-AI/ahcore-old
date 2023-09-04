@@ -22,7 +22,9 @@ from ahcore.utils.io import get_logger, log_hyperparameters
 logger = get_logger(__name__)
 
 
-def create_datamodule(config: DictConfig) -> tuple[DataDescription, LightningDataModule]:
+def create_datamodule(
+    config: DictConfig,
+) -> tuple[DataDescription, LightningDataModule]:
     # Load generic description of the data
     if not config.data_description.get("_target_"):
         raise NotImplementedError(f"No data description defined in <{config.data_description}>")
@@ -137,7 +139,10 @@ def train(config: DictConfig) -> torch.Tensor | None:
     if config.trainer.get("_target_"):
         logger.info("Instantiating trainer <%s>", str(config.trainer._target_))  # noqa
         trainer: Trainer = hydra.utils.instantiate(
-            config.trainer, callbacks=callbacks, logger=lightning_loggers, _convert_="partial"
+            config.trainer,
+            callbacks=callbacks,
+            logger=lightning_loggers,
+            _convert_="partial",
         )
 
     else:
@@ -261,7 +266,10 @@ def inference(config: DictConfig) -> None:
     if config.trainer.get("_target_"):
         logger.info("Instantiating trainer <%s>", str(config.trainer._target_))
         trainer: Trainer = hydra.utils.instantiate(
-            config.trainer, callbacks=callbacks, logger=lightning_loggers, _convert_="partial"
+            config.trainer,
+            callbacks=callbacks,
+            logger=lightning_loggers,
+            _convert_="partial",
         )
     else:
         raise NotImplementedError(f"No trainer target found in <{config.trainer}>")

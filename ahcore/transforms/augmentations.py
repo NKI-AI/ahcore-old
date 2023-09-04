@@ -51,7 +51,11 @@ class MeanStdNormalizer(nn.Module):
     Normalizes the mean and standard deviation of the input image. Assumes the original range is `[0, 255]`.
     """
 
-    def __init__(self, mean: tuple[float, float, float] | None = None, std: tuple[float, float, float] | None = None):
+    def __init__(
+        self,
+        mean: tuple[float, float, float] | None = None,
+        std: tuple[float, float, float] | None = None,
+    ):
         """
         Parameters
         ----------
@@ -217,7 +221,12 @@ class CenterCrop(nn.Module):
 
         self._cropper = K.CenterCrop(size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice")
 
-    def forward(self, *sample: torch.Tensor, data_keys: list[str | int | DataKey] = None, **kwargs):
+    def forward(
+        self,
+        *sample: torch.Tensor,
+        data_keys: list[str | int | DataKey] = None,
+        **kwargs,
+    ):
         output = [self._cropper(item) for item in sample]
 
         if len(output) == 1:
@@ -235,7 +244,9 @@ def _parse_random_apply(random_apply: int | bool | tuple[int, int] | ListConfig)
     return random_apply
 
 
-def _parse_random_apply_weights(random_apply_weights: list[float] | ListConfig | None) -> list[float] | None:
+def _parse_random_apply_weights(
+    random_apply_weights: list[float] | ListConfig | None,
+) -> list[float] | None:
     if isinstance(random_apply_weights, ListConfig):
         return cast(list[float], list(random_apply_weights))
 
@@ -319,7 +330,11 @@ class AugmentationFactory(nn.Module):
     def forward(self, sample):
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
         if self._initial_transforms:
-            kwargs = {"data_keys": self._data_keys, "filenames": sample["path"], "overwrite_mpp": self._overwrite_mpp}
+            kwargs = {
+                "data_keys": self._data_keys,
+                "filenames": sample["path"],
+                "overwrite_mpp": self._overwrite_mpp,
+            }
             for transform in self._initial_transforms:
                 output_data = transform(*output_data, **kwargs)
 

@@ -265,5 +265,12 @@ def linkcode_resolve(domain, info):
     fn = relpath(fn, start=dirname(ahcore.__file__))
 
     if "dev" in ahcore.__version__:
-        return "https://github.com/NKI-AI/ahcore/blob/" "main/ahcore/%s%s" % (fn, linespec)
-    return "https://github.com/NKI-AI/ahcore/blob/" "v%s/ahcore/%s%s" % (ahcore.__version__, fn, linespec)
+        return "https://github.com/NKI-AI/ahcore/blob/" "main/ahcore/%s%s" % (
+            fn,
+            linespec,
+        )
+    return "https://github.com/NKI-AI/ahcore/blob/" "v%s/ahcore/%s%s" % (
+        ahcore.__version__,
+        fn,
+        linespec,
+    )

@@ -62,7 +62,12 @@ def _compute_concentrations(
         Maximum concentrations of the individual stains
     """
     he_concentrations = he_vector.to(optical_density).pinverse() @ optical_density.T
-    max_concentration = torch.stack([percentile(he_concentrations[0, :], 99), percentile(he_concentrations[1, :], 99)])
+    max_concentration = torch.stack(
+        [
+            percentile(he_concentrations[0, :], 99),
+            percentile(he_concentrations[1, :], 99),
+        ]
+    )
     return he_concentrations, max_concentration
 
 
@@ -280,7 +285,8 @@ class MacenkoNormalizer(nn.Module):
                     self._transmitted_intensity,
                     torch.exp(
                         torch.matmul(
-                            -self._he_reference[:, i].unsqueeze(-1), normalized_concentrations[i, :].unsqueeze(0)
+                            -self._he_reference[:, i].unsqueeze(-1),
+                            normalized_concentrations[i, :].unsqueeze(0),
                         )
                     ),
                 )
@@ -316,7 +322,9 @@ class MacenkoNormalizer(nn.Module):
 
         # a heuristic to make the vector corresponding to hematoxylin first and the one corresponding to eosin second
         he_vector = torch.where(
-            v_min[0] > v_max[0], torch.cat((v_min, v_max), dim=1), torch.cat((v_max, v_min), dim=1)
+            v_min[0] > v_max[0],
+            torch.cat((v_min, v_max), dim=1),
+            torch.cat((v_max, v_min), dim=1),
         )
 
         return he_vector
@@ -387,7 +395,10 @@ class MacenkoNormalizer(nn.Module):
         optical_density = optical_density.squeeze(0).view(-1, 3)
         wsi_eigenvectors = _compute_eigenvecs(optical_density_hat[0])
         wsi_level_he = self._find_he_components(optical_density_hat[0], wsi_eigenvectors)
-        wsi_level_concentrations, wsi_level_max_concentrations = _compute_concentrations(wsi_level_he, optical_density)
+        (
+            wsi_level_concentrations,
+            wsi_level_max_concentrations,
+        ) = _compute_concentrations(wsi_level_he, optical_density)
         staining_parameters = {
             "wsi_name": wsi_name,
             "wsi_staining_vectors": wsi_level_he,

@@ -52,7 +52,8 @@ _ImageBackends = {
 }
 
 AnnotationReaders = Enum(
-    value="AnnotationReaders", names=[(field, field) for field in _AnnotationReaders.keys()]
+    value="AnnotationReaders",
+    names=[(field, field) for field in _AnnotationReaders.keys()],
 )  # type: ignore
 ImageBackends = Enum(value="ImageBackends", names=[(field, field) for field in _ImageBackends.keys()])  # type: ignore
 
@@ -128,7 +129,9 @@ def read_json_split_file(json_fn: Path) -> DataSplit:
     return _parsed_file
 
 
-def manifests_from_data_description(data_description: DataDescription) -> SplittedManifest:
+def manifests_from_data_description(
+    data_description: DataDescription,
+) -> SplittedManifest:
     """Create a `SplittedManifest` from a `DataDescription`. Basically this returns a NamedTuple with "fit", "validate",
     "test" and "predict" as keys and a list of `ImageManifest`'s as values.
 

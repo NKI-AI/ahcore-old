@@ -28,10 +28,12 @@ def create_tiger_manifest(args: argparse.Namespace):
         identifier = image_fn.name[:-4]
         tissue_mask_fn = _parse_path(base_directory / "tissue-masks" / f"{identifier}_tissue.tif", base_directory)
         annotation_mask_fn = _parse_path(
-            base_directory / "annotations-tissue-bcss-masks" / f"{identifier}.tif", base_directory
+            base_directory / "annotations-tissue-bcss-masks" / f"{identifier}.tif",
+            base_directory,
         )
         annotation_xml_fn = _parse_path(
-            base_directory / "annotations-tissue-bcss-xmls" / f"{identifier}.xml", base_directory
+            base_directory / "annotations-tissue-bcss-xmls" / f"{identifier}.xml",
+            base_directory,
         )
         if args.use_mask:
             annotation_xml_fn = None
@@ -39,7 +41,11 @@ def create_tiger_manifest(args: argparse.Namespace):
             annotation_mask_fn = None
         manifests.append(
             _create_tiger_sample(
-                image_fn.relative_to(base_directory), identifier, tissue_mask_fn, annotation_mask_fn, annotation_xml_fn
+                image_fn.relative_to(base_directory),
+                identifier,
+                tissue_mask_fn,
+                annotation_mask_fn,
+                annotation_xml_fn,
             )
         )
 

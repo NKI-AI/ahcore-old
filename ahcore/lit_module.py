@@ -35,7 +35,12 @@ class AhCoreLightningModule(pl.LightningModule):
         "grid_local_coordinates",
         "grid_index",
     ]
-    INFERENCE_DICT: InferenceMetadata = {"mpp": None, "size": None, "tile_size": None, "filename": None}
+    INFERENCE_DICT: InferenceMetadata = {
+        "mpp": None,
+        "size": None,
+        "tile_size": None,
+        "filename": None,
+    }
 
     def __init__(
         self,
@@ -52,7 +57,15 @@ class AhCoreLightningModule(pl.LightningModule):
         super().__init__()
 
         self.save_hyperparameters(
-            logger=False, ignore=["model", "augmentations", "metrics", "data_description", "loss", "trackers"]
+            logger=False,
+            ignore=[
+                "model",
+                "augmentations",
+                "metrics",
+                "data_description",
+                "loss",
+                "trackers",
+            ],
         )  # TODO: we should send the hyperparams to the logger elsewhere
 
         self._num_classes = data_description.num_classes
@@ -120,7 +133,11 @@ class AhCoreLightningModule(pl.LightningModule):
         return _tensorboard[0].experiment
 
     def _compute_metrics(
-        self, prediction: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None, stage: TrainerFn
+        self,
+        prediction: torch.Tensor,
+        target: torch.Tensor,
+        roi: torch.Tensor | None,
+        stage: TrainerFn,
     ) -> dict[str, torch.Tensor]:
         if not self._metrics:
             return {}
@@ -156,14 +173,32 @@ class AhCoreLightningModule(pl.LightningModule):
 
         _metrics = self._compute_metrics(_prediction, _target, roi, stage=stage)
         _loss = loss.mean()
-        output = {"loss": _loss, "loss_per_sample": loss.clone().detach(), "metrics": _metrics, **_relevant_dict}
+        output = {
+            "loss": _loss,
+            "loss_per_sample": loss.clone().detach(),
+            "metrics": _metrics,
+            **_relevant_dict,
+        }
         if stage != TrainerFn.FITTING:
             output["prediction"] = _prediction
 
         # Log the loss
-        self.log(f"{self.STAGE_MAP[stage]}/loss", _loss, batch_size=batch_size, sync_dist=True, on_epoch=True)
+        self.log(
+            f"{self.STAGE_MAP[stage]}/loss",
+            _loss,
+            batch_size=batch_size,
+            sync_dist=True,
+            on_epoch=True,
+        )
         # Log the metrics
-        self.log_dict(_metrics, batch_size=batch_size, sync_dist=True, prog_bar=False, on_epoch=True, on_step=False)
+        self.log_dict(
+            _metrics,
+            batch_size=batch_size,
+            sync_dist=True,
+            prog_bar=False,
+            on_epoch=True,
+            on_step=False,
+        )
 
         if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
             for robustness_metric in self._robustness_metrics:
@@ -188,7 +223,8 @@ class AhCoreLightningModule(pl.LightningModule):
                     for key in _features:
                         if _collected_features[key] is None:
                             _collected_features[key] = torch.zeros(
-                                [self._tta_steps, *_features[key].size()], device=self.device
+                                [self._tta_steps, *_features[key].size()],
+                                device=self.device,
                             )
                         _features[key] = _collected_features[key]
 

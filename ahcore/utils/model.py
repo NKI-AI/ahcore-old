@@ -40,7 +40,13 @@ class ExtractFeaturesHook:
         self.hooks = []
         self.features = {}
 
-    def save_output(self, layer_name: str, module: nn.Module, input: torch.Tensor, output: torch.Tensor):
+    def save_output(
+        self,
+        layer_name: str,
+        module: nn.Module,
+        input: torch.Tensor,
+        output: torch.Tensor,
+    ):
         """
         Hook function that saves the output of a layer.
 
@@ -87,7 +93,10 @@ class ExtractFeaturesHook:
         return self
 
     def __exit__(
-        self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[Any]
+        self,
+        type: Optional[Type[BaseException]],
+        value: Optional[BaseException],
+        traceback: Optional[Any],
     ) -> None:
         """
         Removes the hooks when exiting the context.

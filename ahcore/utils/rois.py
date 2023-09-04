@@ -13,7 +13,10 @@ _Rois = list[_Roi]
 
 
 def compute_rois(
-    mask: WsiAnnotations, tile_size: tuple[int, int], tile_overlap: tuple[int, int], centered: bool = True
+    mask: WsiAnnotations,
+    tile_size: tuple[int, int],
+    tile_overlap: tuple[int, int],
+    centered: bool = True,
 ) -> _Rois:
     """
     Compute the ROIs from a `WsiAnnotations` object. The ROIs are computed by:
@@ -94,7 +97,10 @@ def _get_centered_rois(roi_boxes: _Rois, tile_size: tuple[int, int], tile_overla
 
 
 def _compute_effective_size(
-    size: tuple[int, int], tile_size: tuple[int, int], tile_overlap: tuple[int, int], mode=TilingMode.overflow
+    size: tuple[int, int],
+    tile_size: tuple[int, int],
+    tile_overlap: tuple[int, int],
+    mode=TilingMode.overflow,
 ) -> tuple[int, int]:
     """
     Compute the effective size of a tiled region, depending on the tiling mode and given the size. The effective size
@@ -117,5 +123,8 @@ def _compute_effective_size(
     coordinates_x, coordinates_y = tiles_grid_coordinates(
         size=size, tile_size=tile_size, tile_overlap=tile_overlap, mode=mode
     )
-    effective_size = (coordinates_x.max() + tile_size[0], coordinates_y.max() + tile_size[1])
+    effective_size = (
+        coordinates_x.max() + tile_size[0],
+        coordinates_y.max() + tile_size[1],
+    )
     return effective_size

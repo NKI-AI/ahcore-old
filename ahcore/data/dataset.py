@@ -95,10 +95,19 @@ class DlupDataModule(pl.LightningDataModule):
         self._predict_data_iterator: Iterator[Dataset] | None = None
 
         # Variables to keep track if a dataset has already be constructed (it's a slow operation)
-        self._already_called: dict[str, bool] = {"fit": False, "validate": False, "test": False, "predict": False}
+        self._already_called: dict[str, bool] = {
+            "fit": False,
+            "validate": False,
+            "test": False,
+            "predict": False,
+        }
 
         for field in self._manifests._fields:
-            self._logger.info("Number of images for stage %s: %s", field, getattr(self._manifests, field).__len__())
+            self._logger.info(
+                "Number of images for stage %s: %s",
+                field,
+                getattr(self._manifests, field).__len__(),
+            )
 
         self._num_classes = data_description.num_classes
 
@@ -141,7 +150,10 @@ class DlupDataModule(pl.LightningDataModule):
             setattr(self, f"_{stage}_data_iterator", None)
             return
 
-        grid = getattr(self.data_description, "training_grid" if stage == TrainerFn.FITTING else "inference_grid")
+        grid = getattr(
+            self.data_description,
+            "training_grid" if stage == TrainerFn.FITTING else "inference_grid",
+        )
         mpp = getattr(grid, "mpp", None)
         tile_size = grid.tile_size
         tile_overlap = grid.tile_overlap
@@ -257,7 +269,9 @@ class DlupDataModule(pl.LightningDataModule):
         if not self._fit_data_iterator:
             self.setup(TrainerFn.FITTING)
         return self._construct_concatenated_dataloader(
-            self._fit_data_iterator, batch_size=self._batch_size, stage=TrainerFn.FITTING
+            self._fit_data_iterator,
+            batch_size=self._batch_size,
+            stage=TrainerFn.FITTING,
         )
 
     def val_dataloader(self):
@@ -266,7 +280,9 @@ class DlupDataModule(pl.LightningDataModule):
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         val_dataloader = self._construct_concatenated_dataloader(
-            self._validate_data_iterator, batch_size=batch_size, stage=TrainerFn.VALIDATING
+            self._validate_data_iterator,
+            batch_size=batch_size,
+            stage=TrainerFn.VALIDATING,
         )
         setattr(self, f"val_concat_dataset", val_dataloader.dataset)
         return val_dataloader

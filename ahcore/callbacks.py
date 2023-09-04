@@ -5,7 +5,7 @@ import concurrent.futures
 import hashlib
 import json
 import logging
-from multiprocessing import Process, Queue, Semaphore, Pipe, Pool
+from multiprocessing import Pipe, Pool, Process, Queue, Semaphore
 from pathlib import Path
 from typing import Iterator, Optional, TypedDict
 
@@ -39,13 +39,13 @@ class _ValidationDataset(Dataset):
     """Helper dataset to compute the validation metrics."""
 
     def __init__(
-            self,
-            data_description: Optional[DataDescription],
-            native_mpp: float,
-            reader: H5FileImageReader,
-            annotations: Optional[WsiAnnotations] = None,
-            mask: Optional[WsiAnnotations] = None,
-            region_size: tuple[int, int] = (1024, 1024),
+        self,
+        data_description: Optional[DataDescription],
+        native_mpp: float,
+        reader: H5FileImageReader,
+        annotations: Optional[WsiAnnotations] = None,
+        mask: Optional[WsiAnnotations] = None,
+        region_size: tuple[int, int] = (1024, 1024),
     ):
         """
         Parameters
@@ -172,7 +172,7 @@ class _ValidationDataset(Dataset):
         return prediction
 
     def _get_annotation_data(
-            self, coordinates: tuple[int, int]
+        self, coordinates: tuple[int, int]
     ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
         annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
         annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": annotations})[
@@ -302,7 +302,6 @@ class WriteH5Callback(Callback):
         self._writers[self._current_filename]["process"].close()
         self._writers[self._current_filename]["queue"].close()
 
-
     @property
     def writers(self):
         return self._writers
@@ -312,7 +311,13 @@ class WriteH5Callback(Callback):
         return self._dump_dir
 
     def on_validation_batch_end(
-            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx=0,
     ):
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
@@ -323,12 +328,15 @@ class WriteH5Callback(Callback):
 
         if filename != self._current_filename:
             output_filename = _get_output_filename(
-                self._dump_dir, filename, model_name=pl_module.name, step=pl_module.global_step
+                self._dump_dir,
+                filename,
+                model_name=pl_module.name,
+                step=pl_module.global_step,
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
             with open(
-                    self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt",
-                    "a",
+                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt",
+                "a",
             ) as file:
                 file.write(f"{filename},{output_filename}\n")
 
@@ -361,7 +369,12 @@ class WriteH5Callback(Callback):
             )
             new_process = Process(target=new_writer.consume, args=(self.generator(new_queue), child_conn))
             new_process.start()
-            self._writers[filename] = {"queue": new_queue, "writer": new_writer, "process": new_process, "connection": parent_conn}
+            self._writers[filename] = {
+                "queue": new_queue,
+                "writer": new_writer,
+                "process": new_process,
+                "connection": parent_conn,
+            }
             self._current_filename = filename
 
         prediction = outputs["prediction"].detach().cpu().numpy()
@@ -448,7 +461,7 @@ class ComputeWsiMetricsCallback(Callback):
                 # TODO: Put this elsewhere
                 # In this case we need to figure it out.
                 with SlideImage.from_file_path(
-                        image_fn, backend=_ImageBackends[manifest.image[1].name]
+                    image_fn, backend=_ImageBackends[manifest.image[1].name]
                 ) as slide_image:
                     manifest.mpp = slide_image.mpp
 
@@ -459,12 +472,21 @@ class ComputeWsiMetricsCallback(Callback):
         return self._metrics
 
     def on_validation_batch_end(
-            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx=0,
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
-                dump_dir=self._dump_dir, input_path=filename, model_name=pl_module.name, step=pl_module.global_step
+                dump_dir=self._dump_dir,
+                input_path=filename,
+                model_name=pl_module.name,
+                step=pl_module.global_step,
             )
             self._logger.debug("%s -> %s", filename, output_filename)
             self._filenames[output_filename] = filename
@@ -494,9 +516,13 @@ class ComputeWsiMetricsCallback(Callback):
         with self._semaphore:  # Only allow a certain number of threads to compute metrics concurrently
             # Compute the metric for one filename here...
             with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5reader:
-                mask = _parse_annotations(validation_manifest.mask, base_dir=self._data_description.annotations_dir)
+                mask = _parse_annotations(
+                    validation_manifest.mask,
+                    base_dir=self._data_description.annotations_dir,
+                )
                 annotations = _parse_annotations(
-                    validation_manifest.annotations, base_dir=self._data_description.annotations_dir
+                    validation_manifest.annotations,
+                    base_dir=self._data_description.annotations_dir,
                 )
                 dataset_of_validation_image = _ValidationDataset(
                     data_description=self._data_description,
@@ -511,10 +537,16 @@ class ComputeWsiMetricsCallback(Callback):
                     roi = torch.from_numpy(sample["roi"]).unsqueeze(0)
 
                     self._wsi_metrics.process_batch(
-                        predictions=prediction, target=target, roi=roi, wsi_name=str(filename)
+                        predictions=prediction,
+                        target=target,
+                        roi=roi,
+                        wsi_name=str(filename),
                     )
         if self._save_per_image is True:
-            wsi_metrics_dictionary = {"image_fn": str(wsi_filename), "uuid": filename.stem}
+            wsi_metrics_dictionary = {
+                "image_fn": str(wsi_filename),
+                "uuid": filename.stem,
+            }
             if filename.with_suffix(".tiff").is_file():
                 wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
             if filename.is_file():
@@ -533,9 +565,9 @@ class ComputeWsiMetricsCallback(Callback):
         self.compute_metrics()
         metrics = self._wsi_metrics.get_average_score()
         with open(
-                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
-                "w",
-                encoding="utf-8",
+            self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
+            "w",
+            encoding="utf-8",
         ) as json_file:
             json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
@@ -610,22 +642,35 @@ class WriteTiffCallback(Callback):
         self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
 
     def on_validation_batch_end(
-            self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx=0,
     ):
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
-                dump_dir=self._dump_dir, input_path=filename, model_name=pl_module.name, step=pl_module.global_step
+                dump_dir=self._dump_dir,
+                input_path=filename,
+                model_name=pl_module.name,
+                step=pl_module.global_step,
             )
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         results = []
         for image_filename, h5_filename in self._filenames.items():
-            self._logger.debug("Writing image output %s to %s", image_filename, image_filename.with_suffix(".tiff"))
+            self._logger.debug(
+                "Writing image output %s to %s",
+                image_filename,
+                image_filename.with_suffix(".tiff"),
+            )
             with open(
-                    self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt",
-                    "a",
+                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt",
+                "a",
             ) as file:
                 file.write(f"{image_filename},{h5_filename.with_suffix('.tiff')}\n")
             if not h5_filename.exists():
@@ -633,7 +678,13 @@ class WriteTiffCallback(Callback):
                 continue
 
             result = self._pool.apply_async(
-                _write_tiff, (h5_filename, self._tile_size, self._tile_process_function, _iterator_from_reader)
+                _write_tiff,
+                (
+                    h5_filename,
+                    self._tile_size,
+                    self._tile_process_function,
+                    _iterator_from_reader,
+                ),
             )
             results.append(result)
 

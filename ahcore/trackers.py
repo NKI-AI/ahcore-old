@@ -24,7 +24,8 @@ logger = get_logger(__name__)
 
 class Tracker(abc.ABC):
     """Abstract tracker class. Trackers are objects that are created and called only during inference.
-    They should all implement a call method that is called at the end of a prediction epoch."""
+    They should all implement a call method that is called at the end of a prediction epoch.
+    """
 
     @abc.abstractmethod
     def __init__(self):

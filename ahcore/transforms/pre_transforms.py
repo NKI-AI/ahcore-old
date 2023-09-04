@@ -63,7 +63,10 @@ class PreTransformTaskFactory:
         transforms: list[Callable] = []
         if data_description.extract_center:
             transforms.append(
-                ExtractTCGACenter(meta_path=data_description.center_info_path, centers=data_description.centers)
+                ExtractTCGACenter(
+                    meta_path=data_description.center_info_path,
+                    centers=data_description.centers,
+                )
             )
         if not requires_target:
             return cls(transforms)

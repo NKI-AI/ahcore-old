@@ -1,5 +1,6 @@
 # encoding: utf-8
 import json
+from multiprocessing import Pipe
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple
 
@@ -7,7 +8,6 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from dlup.tiling import Grid, GridOrder, TilingMode
-from multiprocessing import Pipe
 
 from ahcore.utils.io import get_logger
 
@@ -103,7 +103,11 @@ class H5FileImageWriter:
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
-    def consume(self, batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None], connection_to_parent: Pipe) -> None:
+    def consume(
+        self,
+        batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None],
+        connection_to_parent: Pipe,
+    ) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
         grid_counter = 0
         try:

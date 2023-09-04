@@ -85,7 +85,9 @@ class InferenceMetadata(TypedDict):
 
 
 def create_inference_metadata(
-    dataset: TiledROIsSlideImageDataset, target_mpp: float | None, tile_size: tuple[int, int]
+    dataset: TiledROIsSlideImageDataset,
+    target_mpp: float | None,
+    tile_size: tuple[int, int],
 ) -> InferenceMetadata:
     """Create the metadata for inference.
 

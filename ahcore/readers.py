@@ -97,7 +97,10 @@ class H5FileImageReader:
         self._size = self._metadata["size"]
         self._num_channels = self._metadata["num_channels"]
         self._dtype = self._metadata["dtype"]
-        self._stride = (self._tile_size[0] - self._tile_overlap[0], self._tile_size[1] - self._tile_overlap[1])
+        self._stride = (
+            self._tile_size[0] - self._tile_overlap[0],
+            self._tile_size[1] - self._tile_overlap[1],
+        )
 
     def __enter__(self):
         if self._h5file is None:
@@ -112,7 +115,10 @@ class H5FileImageReader:
         return self.__empty_tile
 
     def read_region(
-        self, location: tuple[GenericNumber, GenericNumber], scaling: float, size: tuple[int, int]
+        self,
+        location: tuple[GenericNumber, GenericNumber],
+        scaling: float,
+        size: tuple[int, int],
     ) -> npt.NDArray:
         """
 
@@ -229,7 +235,10 @@ class H5FileImageReader:
                     crop_start_x = img_start_x - start_x
                     crop_end_x = img_end_x - start_x
 
-                    bbox = (crop_start_x, crop_start_y), (crop_end_x - crop_start_x, crop_end_y - crop_start_y)
+                    bbox = (crop_start_x, crop_start_y), (
+                        crop_end_x - crop_start_x,
+                        crop_end_y - crop_start_y,
+                    )
                     cropped_tile = crop_to_bbox(tile, bbox)
                     stitched_image[:, img_start_y:img_end_y, img_start_x:img_end_x] = cropped_tile
 

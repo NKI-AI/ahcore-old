@@ -33,7 +33,15 @@ def double_conv(
         enn.PointwiseDropout(out_type, dropout_rate, inplace=False),
         enn.InnerBatchNorm(out_type),
         # pwdw seperable conv
-        enn.R2Conv(out_type, out_type, kernel_size=3, stride=stride, padding=1, groups=out_planes, bias=False),
+        enn.R2Conv(
+            out_type,
+            out_type,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            groups=out_planes,
+            bias=False,
+        ),
         activation(out_type),
     )
 
@@ -46,7 +54,8 @@ def unet_downsample_layer(group, in_planes, out_planes, activation=enn.ReLU):
     """
     in_type = enn.FieldType(group, in_planes * [group.regular_repr])
     return enn.SequentialModule(
-        enn.PointwiseMaxPool(in_type, kernel_size=2), double_conv(group, in_planes, out_planes, activation=activation)
+        enn.PointwiseMaxPool(in_type, kernel_size=2),
+        double_conv(group, in_planes, out_planes, activation=activation),
     )
 
 
@@ -84,7 +93,10 @@ class UnetUpsampleLayer(nn.Module):
         # Pad x1 to the size of x2.
         diff_h = x2.shape[2] - x1.shape[2]
         diff_w = x2.shape[3] - x1.shape[3]
-        x1_tensor = F.pad(x1_tensor, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
+        x1_tensor = F.pad(
+            x1_tensor,
+            [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2],
+        )
 
         # Concatenate along the channels axis.
         cat_tensor = torch.cat([x2_tensor, x1_tensor], dim=1)
@@ -136,7 +148,11 @@ class E2UNet(nn.Module):
         self.feat_type_in_triv = enn.FieldType(group, self.input_channels * [group.trivial_repr])
         feat_type_out_triv = enn.FieldType(group, 3 * [group.regular_repr])
         self.preproc_conv = enn.R2Conv(
-            self.feat_type_in_triv, feat_type_out_triv, kernel_size=3, padding=1, bias=False
+            self.feat_type_in_triv,
+            feat_type_out_triv,
+            kernel_size=3,
+            padding=1,
+            bias=False,
         )
 
         # Create layers of the UNet model.
