@@ -51,11 +51,11 @@ _ImageBackends = {
     "OPENSLIDE": ImageBackend.OPENSLIDE,
 }
 
-AnnotationReaders = Enum(
-    value="AnnotationReaders",
-    names=[(field, field) for field in _AnnotationReaders.keys()],
-)  # type: ignore
-ImageBackends = Enum(value="ImageBackends", names=[(field, field) for field in _ImageBackends.keys()])  # type: ignore
+_AnnotationReaders_names: list[tuple[str, str]] = [(field, field) for field in _AnnotationReaders.keys()]
+_ImageBackends_names: list[tuple[str, str]] = [(field, field) for field in _ImageBackends.keys()]
+
+AnnotationReaders = Enum(value="AnnotationReaders", names=_AnnotationReaders_names)  # type: ignore
+ImageBackends = Enum(value="ImageBackends", names=_ImageBackends_names)  # type: ignore
 
 
 class AnnotationModel(BaseModel):

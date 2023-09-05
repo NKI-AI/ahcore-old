@@ -71,7 +71,7 @@ class DlupDataModule(pl.LightningDataModule):
         )  # save all relevant hyperparams
 
         # Data settings
-        self.data_description = data_description
+        self.data_description: DataDescription = data_description
         self._manifests = manifests_from_data_description(data_description)
 
         self._batch_size = self.hparams.batch_size  # type: ignore

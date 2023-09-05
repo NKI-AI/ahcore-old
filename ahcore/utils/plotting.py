@@ -11,7 +11,7 @@ import PIL.Image
 import PIL.ImageColor
 import PIL.ImageDraw
 import torch
-from dlup.annotations import Point, Polygon, AnnotationType, AnnotationClass
+from dlup.annotations import AnnotationClass, AnnotationType, Point, Polygon
 from torchvision.transforms import functional as TF  # noqa
 from torchvision.utils import make_grid
 
