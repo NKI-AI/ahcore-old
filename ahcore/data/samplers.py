@@ -7,7 +7,7 @@ import math
 from typing import List
 
 from dlup.data.dataset import ConcatDataset
-from torch.utils.data import ConcatDataset, Sampler
+from torch.utils.data import Sampler
 
 from ahcore.utils.io import get_logger
 

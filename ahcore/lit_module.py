@@ -73,16 +73,9 @@ class AhCoreLightningModule(pl.LightningModule):
         self._augmentations = augmentations
 
         self._loss = loss
-        self._robustness_metrics = []
         if metrics is not None:
             self._metrics = metrics.get("tile_level")
             self._wsi_metrics = metrics.get("wsi_level")
-            if "prediction_robustness" in metrics:
-                self._robustness_metrics.append(metrics["prediction_robustness"])
-            if "feature_robustness" in metrics:
-                self._robustness_metrics.append(metrics["feature_robustness"])
-            if "linear_probing" in metrics:
-                self._robustness_metrics.append(metrics["linear_probing"])
 
         if not trackers:
             self._trackers = []
@@ -200,10 +193,6 @@ class AhCoreLightningModule(pl.LightningModule):
             on_step=False,
         )
 
-        if stage == stage.VALIDATING:  # Create tiles iterator and process metrics
-            for robustness_metric in self._robustness_metrics:
-                robustness_metric.update(batch)
-
         return output
 
     def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -258,12 +247,6 @@ class AhCoreLightningModule(pl.LightningModule):
         datamodule: AhCoreLightningModule = cast(AhCoreLightningModule, getattr(self.trainer, "datamodule"))
         self._validation_dataset = datamodule.val_concat_dataset
 
-    def on_validation_epoch_end(self) -> None:
-        if len(self._robustness_metrics) > 0:
-            for robustness_metric in self._robustness_metrics:
-                self.log_dict(robustness_metric.compute(), sync_dist=True, prog_bar=True)
-                robustness_metric.reset()
-
     def on_predict_start(self) -> None:
         """Check that the metadata exists (necessary for saving output) exists before going through the WSI"""
         if not self.predict_metadata["filename"]:
@@ -274,9 +257,9 @@ class AhCoreLightningModule(pl.LightningModule):
             batch = self._augmentations["predict"](batch)
 
         inputs = batch["image"]
-        preds = self._model(inputs)
-        gathered_preds = self.all_gather(preds)
-        return gathered_preds
+        predictions = self._model(inputs)
+        gathered_predictions = self.all_gather(predictions)
+        return gathered_predictions
 
     def on_predict_epoch_end(self, results) -> None:
         """Call all the inference trackers to update"""

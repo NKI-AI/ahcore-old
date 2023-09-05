@@ -7,7 +7,6 @@ import torchmetrics
 from torchmetrics.functional.classification import binary_auroc
 
 from ahcore.metrics.auc import robustness_auc  # noqa
-from ahcore.metrics.linear_probing import LinearProbing
 from ahcore.utils.data import DataDescription
 
 _TORCH: str = "torch"

@@ -163,11 +163,11 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         if isinstance(bias_sigma, float):
             bias_sigma = tuple([bias_sigma for _ in range(3)])
 
-        scale_sigma = torch.tensor(scale_sigma)
-        bias_sigma = torch.tensor(bias_sigma)
+        _scale_sigma = torch.tensor(scale_sigma)
+        _bias_sigma = torch.tensor(bias_sigma)
 
-        scale_factor = torch.stack([1 - scale_sigma, 1 + scale_sigma])
-        bias_factor = torch.stack([-bias_sigma, bias_sigma])
+        scale_factor = torch.stack([1 - _scale_sigma, 1 + _scale_sigma])
+        bias_factor = torch.stack([-_bias_sigma, _bias_sigma])
 
         self._param_generator = rg.PlainUniformGenerator(
             (scale_factor, "scale", None, None), (bias_factor, "bias", None, None)

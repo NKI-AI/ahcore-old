@@ -5,6 +5,7 @@ Histopathology stain specific image normalization functions
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -16,15 +17,17 @@ from ahcore.utils.io import get_logger
 logger = get_logger(__name__)
 
 
-def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> tuple[torch.Tensor, torch.Tensor]:
+def _handle_stain_tensors(stain_tensor: list[torch.Tensor], shape) -> tuple[torch.Tensor, torch.Tensor]:
     """
     This function post-processes the individual staining channels and returns them.
+
     Parameters
     ----------
     stain_tensor: torch.Tensor
         Tensor containing the H and E vectors
-    shape: tuple
-        Shape of the image
+    shape: tuple[int, int, int, int]
+        Shape of the batch as (batch, channels, height, width)
+
     Returns
     -------
     h_stain: torch.Tensor
@@ -33,7 +36,7 @@ def _handle_stain_tensors(stain_tensor: torch.tensor, shape) -> tuple[torch.Tens
         Tensor containing the E vector
     """
     individual_stains = []
-    for stain in stain_tensor:
+    for stain in stain_tensor:  # Has two values
         batch, channels, height, width = shape
         stain = torch.clamp(stain, 0.0, 255.0)
         stain = stain.view(batch, channels, height, width)
@@ -101,15 +104,18 @@ def _compute_eigenvecs(optical_density_hat: torch.Tensor) -> torch.Tensor:
 def percentile(tensor: torch.Tensor, value: float) -> torch.Tensor:
     """
     Original author: https://gist.github.com/spezold/42a451682422beb42bc43ad0c0967a30
+
     Parameters
     ----------
     tensor: torch.Tensor
         input tensor for which the percentile must be calculated.
     value: float
         The percentile value
+
     Returns
     -------
     ``value``-th percentile of the input tensor's data.
+
     Notes
     -----
      Needs PyTorch >= 1.1.0, as ``torch.kthvalue()`` is used.
@@ -178,15 +184,13 @@ class MacenkoNormalizer(nn.Module):
         if self._return_stains:
             raise NotImplementedError("Return stains is not implemented yet.")
 
-        self._stain_vector_cache = {}
+        self._stain_vector_cache: dict[Any, Any] = {}
 
         self._probability = probability
         self._he_reference = self.HE_REFERENCE
         self._max_con_reference = self.MAX_CON_REFERENCE
 
-    def __compute_matrices(
-        self, image_tensor: torch.Tensor, staining_parameters: dict[str : torch.Tensor]
-    ) -> torch.Tensor:
+    def __compute_matrices(self, image_tensor, staining_parameters: dict[str, torch.Tensor]) -> torch.Tensor:
         """
         Compute the H&E staining vectors and their concentration values for every pixel in the image tensor.
         Parameters
@@ -218,17 +222,17 @@ class MacenkoNormalizer(nn.Module):
             batch_con_vecs.append(he_concentrations)
         return torch.stack(batch_con_vecs, dim=0)
 
-    def __normalize_concentrations(
-        self, concentrations: torch.Tensor, maximum_concentration: torch.tensor
-    ) -> torch.Tensor:
+    def _normalize_concentrations(self, concentrations, maximum_concentration) -> torch.Tensor:
         """
         Normalize the concentrations of the H&E stains in each pixel against the reference concentration.
+
         Parameters
         ----------
         concentrations: torch.Tensor
             The concentration of the H&E stains in each pixel.
         maximum_concentration: torch.Tensor
             The maximum concentration of the H&E stains in each pixel.
+
         Returns
         -------
         normalized_concentrations: torch.Tensor
@@ -239,17 +243,17 @@ class MacenkoNormalizer(nn.Module):
         normalised_concentration = torch.mul(concentrations, scaled_reference.to(concentrations))
         return normalised_concentration
 
-    def __create_normalized_images(
-        self, normalized_concentrations: torch.Tensor, image_tensor: torch.Tensor
-    ) -> torch.Tensor:
+    def _create_normalized_images(self, normalized_concentrations, image_tensor) -> torch.Tensor:
         """
         Create the normalized images from the normalized concentrations.
+
         Parameters
         ----------
         normalized_concentrations: torch.Tensor
             The normalized concentrations of the H&E stains in the image.
         image_tensor: torch.Tensor
             The image tensor to be normalized.
+
         Returns
         -------
         normalized_images: torch.Tensor
@@ -265,12 +269,14 @@ class MacenkoNormalizer(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Get the H-stain and the E-stain from the normalized concentrations.
+
         Parameters
         ----------
         normalized_concentrations: torch.Tensor
             The normalized concentrations of the H&E stains in the image.
         image_tensor: torch.Tensor
             The image tensor to be normalized.
+
         Returns
         -------
         h_stain: torch.Tensor
@@ -314,8 +320,8 @@ class MacenkoNormalizer(nn.Module):
         """
         t_hat = torch.matmul(optical_density_hat, eigvecs)
         phi = torch.atan2(t_hat[:, 1], t_hat[:, 0])
-        min_phi = percentile(phi, self._alpha)
-        max_phi = percentile(phi, 100 - self._alpha)
+        min_phi = percentile(phi, float(self._alpha))
+        max_phi = percentile(phi, float(100 - self._alpha))
 
         v_min = torch.matmul(eigvecs, torch.stack((torch.cos(min_phi), torch.sin(min_phi)))).unsqueeze(1)
         v_max = torch.matmul(eigvecs, torch.stack((torch.cos(max_phi), torch.sin(max_phi)))).unsqueeze(1)
@@ -371,7 +377,7 @@ class MacenkoNormalizer(nn.Module):
         normalised_image_tensor = torch.clamp(normalised_image_tensor, 0.0, 255.0)
         return normalised_image_tensor
 
-    def fit(self, wsi: torch.Tensor, wsi_name: str) -> dict[str : torch.Tensor]:
+    def fit(self, wsi: torch.Tensor, wsi_name: str):
         """
         Compress a WSI to a single matrix of eigenvectors and return staining parameters.
 
@@ -381,6 +387,7 @@ class MacenkoNormalizer(nn.Module):
             A tensor containing a whole slide image of shape (1, channels, height, width)
         name: Path
             Path to the WSI file
+
         Returns:
         -------
         staining_parameters: dict[str: torch.Tensor, str: torch.Tensor]
@@ -419,13 +426,15 @@ class MacenkoNormalizer(nn.Module):
         self._he_reference = staining_parameters["wsi_staining_vectors"]
         self._max_con_reference = staining_parameters["max_wsi_concentration"]
 
-    def _get_staining_vectors_from_cache_or_file(self, filenames):
+    def _get_staining_vectors_from_cache_or_file(self, filenames: list[Path]):
         """
         This function loads the staining vectors for a given WSI from the cache.
+
         Parameters
         ----------
-        filenames: list[str]
+        filenames: list[Path]
             List of filenames for which the staining vectors must be loaded.
+
         Returns
         -------
         staining_vectors: dict
@@ -439,13 +448,8 @@ class MacenkoNormalizer(nn.Module):
                 he, max_con = self._stain_vector_cache[filename]
             else:
                 # Now we need to compute it.
-                kwargs = {}
-                if Path(filename) in self._overwrite_mpp:
-                    kwargs["overwrite_mpp"] = (
-                        self._overwrite_mpp[Path(filename)],
-                        self._overwrite_mpp[Path(filename)],
-                    )
-                with SlideImage.from_file_path(filename, **kwargs) as slide_image:
+                overwrite_mpp = tuple([self._overwrite_mpp[Path(filename)]] * 2)
+                with SlideImage.from_file_path(filename, overwrite_mpp=overwrite_mpp) as slide_image:
                     logger.info("Computing Macenko staining vector for %s", filename)
                     stain_computer = MacenkoNormalizer(return_stains=False)
 
@@ -476,22 +480,22 @@ class MacenkoNormalizer(nn.Module):
         staining_parameters["max_wsi_concentration"] = torch.stack(max_concentrations)
         return staining_parameters
 
-    def forward(self, *args: tuple[torch.Tensor], **kwargs) -> tuple[torch.Tensor]:
-        args = list(args)
-        sample = args[0]
+    def forward(self, *args: tuple[torch.Tensor], **kwargs):
+        _args = list(args)
+        sample = _args[0]
         if "overwrite_mpp" in kwargs.keys():
             setattr(self, "_overwrite_mpp", kwargs["overwrite_mpp"])
         if "staining_parameters" in kwargs.keys():
             staining_parameters = kwargs["staining_parameters"]
         else:
-            filenames = kwargs["filenames"]
+            filenames = [Path(_) for _ in kwargs["filenames"]]
             staining_parameters = self._get_staining_vectors_from_cache_or_file(filenames)
         tile_concentrations = self.__compute_matrices(sample, staining_parameters=staining_parameters)
         wsi_maximum_concentration = staining_parameters["max_wsi_concentration"]
-        normalized_concentrations = self.__normalize_concentrations(tile_concentrations, wsi_maximum_concentration)
-        normalised_image_tensor = self.__create_normalized_images(normalized_concentrations, sample)
-        args[0] = normalised_image_tensor
-        return tuple(args)
+        normalized_concentrations = self._normalize_concentrations(tile_concentrations, wsi_maximum_concentration)
+        normalised_image_tensor = self._create_normalized_images(normalized_concentrations, sample)
+        _args[0] = normalised_image_tensor
+        return tuple(_args)
 
     def __repr__(self):
         return (
