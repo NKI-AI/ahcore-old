@@ -5,7 +5,7 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional, cast
 
 import kornia as K
 import pytorch_lightning as pl
@@ -122,7 +122,7 @@ class AhCoreLightningModule(pl.LightningModule):
         return self._data_description
 
     @property
-    def validation_dataset(self) -> ConcatDataset:
+    def validation_dataset(self) -> Optional[ConcatDataset]:
         return self._validation_dataset
 
     @property
@@ -252,8 +252,11 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def on_validation_start(self) -> None:
-        super().on_validation_start()
-        self._validation_dataset = self.trainer.datamodule.val_concat_dataset
+        assert hasattr(
+            self.trainer, "datamodule"
+        ), "Datamodule is not defined for the trainer. Required for validation"
+        datamodule: AhCoreLightningModule = cast(AhCoreLightningModule, getattr(self.trainer, "datamodule"))
+        self._validation_dataset = datamodule.val_concat_dataset
 
     def on_validation_epoch_end(self) -> None:
         if len(self._robustness_metrics) > 0:

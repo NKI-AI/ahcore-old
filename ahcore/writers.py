@@ -1,6 +1,6 @@
 # encoding: utf-8
 import json
-from multiprocessing import Pipe
+from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple
 
@@ -25,7 +25,7 @@ class H5FileImageWriter:
         tile_size: tuple[int, int],
         tile_overlap: tuple[int, int],
         num_samples: int,
-        progress: Any | None = None,
+        progress: Optional[Any] = None,
     ) -> None:
         self._grid: Optional[Grid] = None
         self._grid_coordinates: Optional[npt.NDArray] = None
@@ -59,8 +59,7 @@ class H5FileImageWriter:
         )
 
         # TODO: We only support a single Grid
-        # And GridOrder C
-        self._grid = Grid.from_tiling(
+        self._grid: Grid = Grid.from_tiling(
             (0, 0),
             size=self._size,
             tile_size=self._tile_size,
@@ -68,10 +67,11 @@ class H5FileImageWriter:
             mode=TilingMode.overflow,
             order=GridOrder.C,
         )
+        num_samples = len(self._grid)
 
         self._tile_indices = h5file.create_dataset(
             "tile_indices",
-            shape=(len(self._grid),),
+            shape=(num_samples,),
             dtype=int,
             compression="gzip",
         )
@@ -106,10 +106,12 @@ class H5FileImageWriter:
     def consume(
         self,
         batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None],
-        connection_to_parent: Pipe,
+        connection_to_parent: Connection,
     ) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
         grid_counter = 0
+        # Mostly for mypy
+        assert self._grid, "Grid is not initialized"
         try:
             with h5py.File(self._filename.with_suffix(".h5.partial"), "w") as h5file:
                 first_coordinates, first_batch = next(batch_generator)

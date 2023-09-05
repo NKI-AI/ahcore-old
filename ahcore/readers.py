@@ -12,6 +12,7 @@ from scipy.ndimage import map_coordinates
 from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
+from typing import Optional
 
 
 class StitchingMode(Enum):
@@ -54,7 +55,7 @@ class H5FileImageReader:
 
         self.__empty_tile = None
 
-        self._h5file = None
+        self._h5file: Optional[h5py.File] = None
         self._metadata = None
         self._mpp = None
         self._tile_size = None
@@ -76,13 +77,13 @@ class H5FileImageReader:
     def mpp(self) -> float:
         return self._mpp
 
-    def get_mpp(self, scaling: float | None) -> float:
+    def get_mpp(self, scaling: Optional[float]) -> float:
         if scaling is None:
             return self.mpp
 
         return self._mpp / scaling
 
-    def get_scaling(self, mpp: float | None) -> float:
+    def get_scaling(self, mpp: Optional[float]) -> float:
         """Inverse of get_mpp()."""
         if not mpp:
             return 1.0
@@ -116,7 +117,7 @@ class H5FileImageReader:
 
     def read_region(
         self,
-        location: tuple[GenericNumber, GenericNumber],
+        location: tuple[int, int],
         scaling: float,
         size: tuple[int, int],
     ) -> npt.NDArray:
@@ -124,7 +125,7 @@ class H5FileImageReader:
 
         Parameters
         ----------
-        location : tuple
+        location : tuple[int, int]
             Location from the top left (x, y) in pixel coordinates given at the requested scaling.
         scaling : float
         size : tuple[int, int]
@@ -140,8 +141,13 @@ class H5FileImageReader:
 
         order = 1
         # Calculate original location and size considering the scaling
-        original_location = tuple(map(lambda l: math.floor(l / scaling) - order, location))
-        original_size = tuple(map(lambda s: math.ceil(s / scaling) + order, size))
+
+        # unpack for mypy
+        l1, l2 = location
+        s1, s2 = size
+
+        original_location = (int(math.floor(l1 / scaling)) - order, int(math.floor(l2 / scaling)) - order)
+        original_size = (int(math.ceil(s1 / scaling)) + order, int(math.ceil(s2 / scaling)) + order)
 
         raw_region = self.read_region_raw(original_location, original_size)
 
@@ -185,6 +191,7 @@ class H5FileImageReader:
         """
         if self._h5file is None:
             self._open_file()
+        assert self._h5file, "File is not open. Should not happen"
 
         image_dataset = self._h5file["data"]
         num_tiles = self._metadata["num_tiles"]
@@ -257,7 +264,7 @@ class H5FileImageReader:
                     raise ValueError("Unsupported stitching mode")
 
         if self._stitching_mode == StitchingMode.AVERAGE:
-            stitched_image = (stitched_image / divisor_array[..., np.newaxis]).astype(np.float)
+            stitched_image = (stitched_image / divisor_array[..., np.newaxis]).astype(float)
 
         return stitched_image
 

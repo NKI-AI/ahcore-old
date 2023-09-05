@@ -5,7 +5,7 @@ Augmentations factory
 """
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, Optional, cast
 
 import kornia.augmentation as K
 import torch
@@ -181,15 +181,18 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
     def apply_transform(
         self,
         sample: torch.Tensor,
-        params=None,
-        flags=None,
-        transform=None,
+        params: dict[str, torch.Tensor],
+        flags: dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
         data_keys: list[str | int | DataKey] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
         Apply HED color augmentation on an input tensor.
         """
+        assert flags, "Flags should be provided"
+        assert params, "Params should be provided"
+
         epsilon = flags["epsilon"].to(sample)
         reference_matrix = flags["M"].to(sample)
         reference_matrix_inv = flags["M_inv"].to(sample)
