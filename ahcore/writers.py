@@ -59,7 +59,7 @@ class H5FileImageWriter:
         )
 
         # TODO: We only support a single Grid
-        self._grid = Grid.from_tiling(
+        grid = Grid.from_tiling(
             (0, 0),
             size=self._size,
             tile_size=self._tile_size,
@@ -67,11 +67,11 @@ class H5FileImageWriter:
             mode=TilingMode.overflow,
             order=GridOrder.C,
         )
-        num_samples = len(self._grid)
-
+        num_tiles = len(grid)
+        self._grid = grid
         self._tile_indices = h5file.create_dataset(
             "tile_indices",
-            shape=(num_samples,),
+            shape=(num_tiles,),
             dtype=int,
             compression="gzip",
         )
@@ -96,7 +96,7 @@ class H5FileImageWriter:
             "num_samples": self._num_samples,
             "tile_size": tuple(self._tile_size),
             "tile_overlap": tuple(self._tile_overlap),
-            "num_tiles": len(self._grid),
+            "num_tiles": num_tiles,
             "grid_order": "C",
             "mode": "overflow",
         }
@@ -111,7 +111,12 @@ class H5FileImageWriter:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
         grid_counter = 0
         # Mostly for mypy
+
         assert self._grid, "Grid is not initialized"
+        assert self._tile_indices, "Tile indices are not initialized"
+        assert self._image_dataset, "Image dataset is not initialized"
+        assert self._coordinates_dataset, "Coordinates dataset is not initialized"
+
         try:
             with h5py.File(self._filename.with_suffix(".h5.partial"), "w") as h5file:
                 first_coordinates, first_batch = next(batch_generator)

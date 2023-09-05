@@ -4,28 +4,3 @@ tile_level:
 wsi_level:
   _target_: ahcore.metrics.WSIMetricFactory.for_segmentation
   compute_overall_dice: True
-
-prediction_robustness:
-  _target_: ahcore.metrics.epoch_metrics.PredictionAUCRobustness
-  target_key: "center"
-  target_aggregations: ["min", "max", "mean", "std"]
-
-feature_robustness:
-  _target_: ahcore.metrics.epoch_metrics.FeatureAUCRobustness
-  target_key: "center"
-  feature_layer: "model.1.upconv.up.adn.A" # TODO: Do this elsewhere?
-  features_patch_aggregation: "mean"
-  features_per_target_aggregation: "mean"
-  target_aggregations: ["min", "max", "mean", "std"]
-
-linear_probing:
-  _target_: ahcore.metrics.epoch_metrics.LinearModelFeatureRobustness
-  target_key: "center"
-  feature_layer: "model.1.upconv.up.adn.A"
-  features_patch_aggregation: "mean"
-  target_aggregations: [ "min", "max", "mean", "std" ]
-  model_name: "LogisticRegression"
-  test_size: 0.3
-  max_iter: 1000
-  scoring: "roc_auc"
-  multi_class: "ovr"

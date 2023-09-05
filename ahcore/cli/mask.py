@@ -61,7 +61,6 @@ def create_wsi_iterator(args: argparse.Namespace, json_manifest: dict):
     data_description = DataDescription(
         data_dir=args.image_directory,
         manifest_path=Path(""),
-        dataset_split_path=Path(""),
         mask_label="mask",
         mask_threshold=0.5,
         roi_name="roi",

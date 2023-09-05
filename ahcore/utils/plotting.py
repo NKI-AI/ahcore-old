@@ -104,6 +104,7 @@ def plot_2d(
 
 
 def binary_mask_to_polygon(mask: np.ndarray, label: str | None = None) -> list[Polygon]:
+    _label = "mask" if label is None else label
     geometries = []
     contours, hierarchy = cv2.findContours(mask.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     # TODO: This can be done easier
@@ -111,7 +112,7 @@ def binary_mask_to_polygon(mask: np.ndarray, label: str | None = None) -> list[P
     for contour in contours:
         if len(contour) < 3:
             continue
-        a_cls = AnnotationClass(label=label, a_cls=AnnotationType.POLYGON)
+        a_cls = AnnotationClass(label=_label, a_cls=AnnotationType.POLYGON)
         geometries.append(Polygon(contour, a_cls=a_cls))
     return geometries
 

@@ -4,7 +4,7 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Optional
 
 import pytorch_lightning as pl
 import torch
@@ -138,7 +138,7 @@ class DlupDataModule(pl.LightningDataModule):
     def predict_manifest(self):
         return self._manifests.predict
 
-    def setup(self, stage: TrainerFn | None = None) -> None:
+    def setup(self, stage: Optional[str] = None) -> None:
         if not stage:
             return
 

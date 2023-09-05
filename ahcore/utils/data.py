@@ -11,12 +11,7 @@ from typing import ClassVar, Dict, Optional, Protocol, TypedDict
 from dlup.data.dataset import TiledROIsSlideImageDataset
 
 
-class _IsDataclass(Protocol):
-    # From https://stackoverflow.com/a/55240861
-    __dataclass_fields__: ClassVar[Dict]
-
-
-def dataclass_to_uuid(data_class: _IsDataclass) -> str:
+def dataclass_to_uuid(data_class) -> str:
     """Create a unique identifier for a dataclass.
 
     This is done by pickling the object, and computing the sha256 hash of the pickled object.
@@ -47,11 +42,9 @@ class DataDescription:
     mask_threshold: Optional[float]  # This is only used for training
     roi_name: Optional[str]
     num_classes: int
+    dataset_split_path: Optional[Path]
     data_dir: Path
     manifest_path: Path
-    dataset_split_path: Optional[Path]
-    center_info_path: Optional[Path]
-    centers: Optional[list[str]]
     annotations_dir: Path
 
     training_grid: GridDescription
