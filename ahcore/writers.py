@@ -59,7 +59,7 @@ class H5FileImageWriter:
         )
 
         # TODO: We only support a single Grid
-        self._grid: Grid = Grid.from_tiling(
+        self._grid = Grid.from_tiling(
             (0, 0),
             size=self._size,
             tile_size=self._tile_size,

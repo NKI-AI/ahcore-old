@@ -11,7 +11,7 @@ import PIL.Image
 import PIL.ImageColor
 import PIL.ImageDraw
 import torch
-from dlup.annotations import Point, Polygon
+from dlup.annotations import Point, Polygon, AnnotationType, AnnotationClass
 from torchvision.transforms import functional as TF  # noqa
 from torchvision.utils import make_grid
 
@@ -111,7 +111,8 @@ def binary_mask_to_polygon(mask: np.ndarray, label: str | None = None) -> list[P
     for contour in contours:
         if len(contour) < 3:
             continue
-        geometries.append(Polygon(contour, label=label))
+        a_cls = AnnotationClass(label=label, a_cls=AnnotationType.POLYGON)
+        geometries.append(Polygon(contour, a_cls=a_cls))
     return geometries
 
 
