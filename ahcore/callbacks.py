@@ -455,7 +455,6 @@ class ComputeWsiMetricsCallback(Callback):
         self._logger = get_logger(type(self).__name__)
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
 
-        self.__write_h5_callback_index = -1
         self._wsi_metrics = None
 
         self._validation_manifests: dict[str, ImageManifest] = {}
@@ -463,7 +462,6 @@ class ComputeWsiMetricsCallback(Callback):
         self._dump_list: list[dict[str, str]] = []
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
-        has_write_h5_callback = None
         _callback: Optional[WriteH5Callback] = None
         for idx, callback in enumerate(trainer.callbacks):
             if isinstance(callback, WriteH5Callback):
@@ -693,8 +691,8 @@ class WriteTiffCallback(Callback):
             raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")
 
         # This is needed for mypy
-        assert _callback, "_callback should never be None after the loop."
-        assert _callback.dump_dir, "_callback.dump_dir should never be None after the loop."
+        assert _callback, "_callback should never be None after the setup."
+        assert _callback.dump_dir, "_callback.dump_dir should never be None after the setup."
         self._dump_dir = _callback.dump_dir
 
     def on_validation_batch_end(
