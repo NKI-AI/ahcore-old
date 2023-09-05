@@ -6,8 +6,9 @@ import hashlib
 import json
 import logging
 from multiprocessing import Pipe, Pool, Process, Queue, Semaphore
+from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Iterator, Optional, TypedDict
+from typing import Any, Iterator, Optional, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -17,6 +18,7 @@ import torch.distributed as dist
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
+from dlup.data.dataset import ConcatDataset, TiledROIsSlideImageDataset
 from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
@@ -26,6 +28,7 @@ from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
+from ahcore.utils.data import GridDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.manifest import DataDescription, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
@@ -126,8 +129,11 @@ class _ValidationDataset(Dataset):
         Returns
         -------
         bool
-            True if the region is masked, False otherwise.
+            True if the region is masked, False otherwise. Will also return True when there is no mask.
         """
+        if self._mask is None:
+            return True
+
         region_mask = self._mask.read_region(coordinates, self._scaling, self._region_size)
 
         if isinstance(region_mask, np.ndarray):
@@ -137,7 +143,7 @@ class _ValidationDataset(Dataset):
         # Else, we compute if there is a positive area in the region.
         return sum(_.area if _ is not isinstance(_, (Point, MultiPoint)) else 1.0 for _ in region_mask) > 0
 
-    def __getitem__(self, idx: int) -> dict[str, npt.NDArray[np.uint8 | int | float]]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = {}
         coordinates = self._regions[idx]
 
@@ -150,7 +156,7 @@ class _ValidationDataset(Dataset):
 
         return sample
 
-    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | int | float]:
+    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray:
         x, y = coordinates
         width, height = self._region_size
 
@@ -160,7 +166,7 @@ class _ValidationDataset(Dataset):
             region = self._reader.read_region_raw(coordinates, self._region_size)
         return region
 
-    def _read_and_pad_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | int | float]:
+    def _read_and_pad_region(self, coordinates: tuple[int, int]) -> npt.NDArray:
         x, y = coordinates
         width, height = self._region_size
         new_width = min(width, self._reader.size[0] - x)
@@ -173,23 +179,36 @@ class _ValidationDataset(Dataset):
 
     def _get_annotation_data(
         self, coordinates: tuple[int, int]
-    ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
+    ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8] | None]:
+        if not self._annotations:
+            raise ValueError("No annotations are provided.")
+
+        if not self._data_description:
+            raise ValueError("No data description is provided.")
+
+        if not self._data_description.remap_labels:
+            raise ValueError("Remap labels are not provided.")
+
+        if not self._data_description.index_map:
+            raise ValueError("Index map is not provided.")
+
         annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
         annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": annotations})[
             "annotations"
         ]
 
-        points, region, roi = convert_annotations(
+        points, boxes, region, roi = convert_annotations(
             annotations,
             self._region_size,
             index_map=self._data_description.index_map,
             roi_name="roi",
         )
         region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
-        roi = roi[np.newaxis, ...]
-        return region, roi
+        if roi is not None:
+            return region, roi[np.newaxis, ...]
+        return region, None
 
-    def __iter__(self) -> Iterator[dict[str, npt.NDArray[np.uint8 | int | float]]]:
+    def __iter__(self) -> Iterator[dict[str, Any]]:
         for idx in range(len(self)):
             yield self[idx]
 
@@ -201,7 +220,7 @@ class _WriterMessage(TypedDict):
     queue: Queue
     writer: H5FileImageWriter
     process: Process
-    connection: Pipe
+    connection: Connection
 
 
 def _get_uuid_for_filename(input_path: Path) -> str:
@@ -264,6 +283,10 @@ class WriteH5Callback(Callback):
 
         self._logger = get_logger(type(self).__name__)
 
+    @property
+    def dump_dir(self) -> Path:
+        return self._dump_dir
+
     def __check_process(self) -> bool | None:
         """
         This module communicates with all the child processes spawned by the main process while writing h5 files.
@@ -273,6 +296,9 @@ class WriteH5Callback(Callback):
         -------
         bool | None
         """
+        # This is for mypy
+        assert self._current_filename, "_current_filename shouldn't be None here"
+
         connection = self._writers[self._current_filename]["connection"]
         if connection.poll():  # Check if there's a message from the child process
             status, filename, message = connection.recv()  # Receive the message
@@ -295,6 +321,8 @@ class WriteH5Callback(Callback):
         -------
         None
         """
+        assert self._current_filename, "_current_filename shouldn't be None here"
+
         self._writers[self._current_filename]["queue"].put(None)
         self._writers[self._current_filename]["process"].join()
         self.__check_process()
@@ -305,10 +333,6 @@ class WriteH5Callback(Callback):
     @property
     def writers(self):
         return self._writers
-
-    @property
-    def dump_dir(self) -> Path:
-        return self._dump_dir
 
     def on_validation_batch_end(
         self,
@@ -328,16 +352,15 @@ class WriteH5Callback(Callback):
 
         if filename != self._current_filename:
             output_filename = _get_output_filename(
-                self._dump_dir,
+                self.dump_dir,
                 filename,
-                model_name=pl_module.name,
+                model_name=str(pl_module.name),
                 step=pl_module.global_step,
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            with open(
-                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_h5_link.txt",
-                "a",
-            ) as file:
+            output_path = self.dump_dir / "output" / f"step_{pl_module.global_step}"
+
+            with open(output_path / "image_h5_link.txt", "a") as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
@@ -346,17 +369,28 @@ class WriteH5Callback(Callback):
                 self._semaphore.release()
 
             self._semaphore.acquire()
-            current_dataset, _ = pl_module.validation_dataset.index_to_dataset(self._validation_index)
+            validation_dataset: ConcatDataset = pl_module.validation_dataset  # type: ignore
+
+            current_dataset: TiledROIsSlideImageDataset
+            current_dataset, _ = validation_dataset.index_to_dataset(self._validation_index)  # type: ignore
             slide_image = current_dataset.slide_image
-            mpp = pl_module.data_description.inference_grid.mpp
+
+            data_description: DataDescription = pl_module.data_description  # type: ignore
+            inference_grid: GridDescription = data_description.inference_grid
+
+            mpp = inference_grid.mpp
+            if mpp is None:
+                self._logger.info("mpp is not set. Retrieving from slide image.")
+                mpp = slide_image.mpp
+
             size = slide_image.get_scaled_size(slide_image.get_scaling(mpp))
             num_samples = len(current_dataset)
 
             # Let's get the data_description, so we can figure out the tile size and things like that
-            tile_size = pl_module.data_description.inference_grid.tile_size
-            tile_overlap = pl_module.data_description.inference_grid.tile_overlap
+            tile_size = inference_grid.tile_size
+            tile_overlap = inference_grid.tile_overlap
 
-            new_queue = Queue()
+            new_queue: Queue = Queue()
             parent_conn, child_conn = Pipe()
             new_writer = H5FileImageWriter(
                 output_filename,
@@ -415,7 +449,6 @@ class ComputeWsiMetricsCallback(Callback):
         """
         self._data_description = None
         self._reader = H5FileImageReader
-        self._metrics = []
         self._dump_dir = None
         self._save_per_image = save_per_image
         self._filenames: dict[Path, Path] = {}
@@ -427,26 +460,30 @@ class ComputeWsiMetricsCallback(Callback):
 
         self._validation_manifests: dict[str, ImageManifest] = {}
 
-        self._dump_list = []
+        self._dump_list: list[dict[str, str]] = []
 
-    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
+    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
         has_write_h5_callback = None
+        _callback: Optional[WriteH5Callback] = None
         for idx, callback in enumerate(trainer.callbacks):
             if isinstance(callback, WriteH5Callback):
-                has_write_h5_callback = True
-                self.__write_h5_callback_index = idx
+                _callback = cast(WriteH5Callback, trainer.callbacks[idx])
                 break
 
-        self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
-
-        if not has_write_h5_callback:
+        if _callback is None:
             raise ValueError(
                 "WriteH5Callback is not in the trainer's callbacks. "
                 "This is required before WSI metrics can be computed using this Callback"
             )
 
+        self._dump_dir = _callback.dump_dir
+
         self._wsi_metrics = pl_module.wsi_metrics
-        self._data_description = trainer.datamodule.data_description
+        self._data_description = trainer.datamodule.data_description  # type: ignore
+
+        if not self._data_description:
+            raise ValueError("Data description is not set.")
+
         self._class_names = dict([(v, k) for k, v in self._data_description.index_map.items()])
         self._class_names[0] = "background"
 
@@ -480,6 +517,9 @@ class ComputeWsiMetricsCallback(Callback):
         batch_idx,
         dataloader_idx=0,
     ):
+        if not self._dump_dir:
+            raise ValueError("Dump directory is not set.")
+
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
@@ -560,6 +600,11 @@ class ComputeWsiMetricsCallback(Callback):
             self._dump_list.append(wsi_metrics_dictionary)
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        if not self._dump_dir:
+            raise ValueError("Dump directory is not set.")
+        if not self._wsi_metrics:
+            raise ValueError("WSI metrics are not set.")
+
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
         self.compute_metrics()
@@ -618,7 +663,7 @@ class WriteTiffCallback(Callback):
     def __init__(self, max_concurrent_writers: int):
         self._pool = Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
-        self._dump_dir = None
+        self._dump_dir: Optional[Path] = None
         self.__write_h5_callback_index = -1
 
         self._tile_size = (1024, 1024)
@@ -627,19 +672,30 @@ class WriteTiffCallback(Callback):
 
         self._tile_process_function = tile_process_function  # function that is applied to the tile.
 
-        self._filenames = {}  # This has all the h5 files
+        self._filenames: dict[Path, Path] = {}  # This has all the h5 files
 
-    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
-        has_write_h5_callback = None
+    @property
+    def dump_dir(self) -> Optional[Path]:
+        return self._dump_dir
+
+    def _validate_parameters(self):
+        dump_dir = self._dump_dir
+        if not dump_dir:
+            raise ValueError("Dump directory is not set.")
+
+    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
+        _callback: Optional[WriteH5Callback] = None
         for idx, callback in enumerate(trainer.callbacks):
             if isinstance(callback, WriteH5Callback):
-                has_write_h5_callback = True
-                self.__write_h5_callback_index = idx
+                _callback = cast(WriteH5Callback, trainer.callbacks[idx])
                 break
-        if not has_write_h5_callback:
+        if _callback is None:
             raise ValueError("WriteH5Callback required before tiff images can be written using this Callback.")
 
-        self._dump_dir = trainer.callbacks[self.__write_h5_callback_index].dump_dir
+        # This is needed for mypy
+        assert _callback, "_callback should never be None after the loop."
+        assert _callback.dump_dir, "_callback.dump_dir should never be None after the loop."
+        self._dump_dir = _callback.dump_dir
 
     def on_validation_batch_end(
         self,
@@ -650,28 +706,30 @@ class WriteTiffCallback(Callback):
         batch_idx,
         dataloader_idx=0,
     ):
+        assert self.dump_dir, "dump_dir should never be None here."
+
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
             output_filename = _get_output_filename(
-                dump_dir=self._dump_dir,
+                dump_dir=self.dump_dir,
                 input_path=filename,
-                model_name=pl_module.name,
+                model_name=str(pl_module.name),
                 step=pl_module.global_step,
             )
             self._filenames[filename] = output_filename
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        assert self.dump_dir, "dump_dir should never be None here."
+
         results = []
         for image_filename, h5_filename in self._filenames.items():
             self._logger.debug(
                 "Writing image output %s to %s",
-                image_filename,
-                image_filename.with_suffix(".tiff"),
+                Path(image_filename),
+                Path(image_filename).with_suffix(".tiff"),
             )
-            with open(
-                self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "image_tiff_link.txt",
-                "a",
-            ) as file:
+            output_path = self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}"
+            with open(output_path / "image_tiff_link.txt", "a") as file:
                 file.write(f"{image_filename},{h5_filename.with_suffix('.tiff')}\n")
             if not h5_filename.exists():
                 self._logger.warning("H5 file %s does not exist. Skipping", h5_filename)

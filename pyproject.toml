@@ -43,19 +43,3 @@ max-line-length = "120"
 max-args=20
 max-branches=30
 max-parents=15
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py39, py310
-skip_missing_interpreters=true
-[gh-actions]
-python =
-    3.9: py39
-    3.10: py310
-[testenv]
-deps = pytest
-extras = dev
-allowlist_externals = sh
-commands= sh -c "pytest"
-"""
