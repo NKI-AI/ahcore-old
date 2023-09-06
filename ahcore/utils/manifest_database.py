@@ -1,6 +1,8 @@
 # encoding: utf-8
+import json
 import random
 from enum import Enum as PyEnum
+from pathlib import Path
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
@@ -41,7 +43,7 @@ class Patient(Base):
 class Image(Base):
     __tablename__ = "image"
     id = Column(Integer, primary_key=True)
-    filename = Column(String)
+    filename = Column(String, unique=True)
     reader = Column(String)
     patient_id = Column(Integer, ForeignKey("patient.id"))
 
@@ -54,7 +56,7 @@ class Image(Base):
 class Mask(Base):
     __tablename__ = "mask"
     id = Column(Integer, primary_key=True)
-    filename = Column(String)
+    filename = Column(String, unique=True)
     reader = Column(String)
     image_id = Column(Integer, ForeignKey("image.id"))
 
@@ -64,7 +66,7 @@ class Mask(Base):
 class ImageAnnotations(Base):
     __tablename__ = "image_annotations"
     id = Column(Integer, primary_key=True)
-    annotation_data = Column(String)  # Simplified for example, you might want to use a more complex datatype
+    filename = Column(String, unique=True)
     image_id = Column(Integer, ForeignKey("image.id"))
 
     image = relationship("Image", back_populates="annotations")
@@ -106,11 +108,10 @@ class Split(Base):
 
     patient = relationship("Patient", back_populates="split")
     split_definition_id = Column(Integer, ForeignKey("split_definitions.id"))
-
     split_definition = relationship("SplitDefinitions", back_populates="splits")
 
 
-DATABASE_URL = "sqlite:///your_database_path_here.db"
+DATABASE_URL = "sqlite:///tcga.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -125,9 +126,20 @@ def insert_record(record):
         session.commit()
 
 
-def populate_with_dummies():
+def get_patient_from_tcga_id(tcga_filename: str) -> str:
+    return tcga_filename[:12]
+
+
+def populate_from_annotated_tcga(path: Path) -> str:
+    annotation_folder = Path(
+        "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
+    )
+    path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
+    with open(path_to_mapping, "r") as f:
+        mapping = json.load(f)
+
     with SessionLocal() as session:
-        manifest = Manifest(name="Dummy Manifest")
+        manifest = Manifest(name="TCGA Breast Annotations v20230228")
         session.add(manifest)
         session.flush()
 
@@ -135,50 +147,49 @@ def populate_with_dummies():
         session.add(split_definition)
         session.flush()
 
-        for i in range(101):
-            patient_code = f"A_{i:03}"
-            patient = Patient(patient_code=patient_code, manifest=manifest)
-            session.add(patient)
+        for folder in annotation_folder.glob("TCGA*"):
+            patient_code = get_patient_from_tcga_id(folder.name)
+
+            annotation_path = folder / "annotations.json"
+            mask_path = folder / "masks.json"
+
+            # Only add patient if it doesn't exist
+            existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()
+            if existing_patient:
+                patient = existing_patient
+            else:
+                patient = Patient(patient_code=patient_code, manifest=manifest)
+                session.add(patient)
+                session.flush()
+
+                # For now random.
+                split_category = random.choices(["train", "validate", "test"], [70, 20, 10])[0]
+
+                split = Split(category=split_category, patient=patient, split_definition=split_definition)
+                session.add(split)
+
+            patient_label = PatientLabels(key="study", value="BRCA", patient=patient)
+            session.add(patient_label)
             session.flush()
 
-            patient_age = random.randint(0, 100)
-            patient_label = PatientLabels(key="age", value=str(patient_age), patient=patient)
-            session.add(patient_label)
+            filename = mapping[folder.name]
+            image = Image(filename=str(filename), reader="OPENSLIDE", patient=patient)
+            session.add(image)
+            session.flush()  # Flush so that Image ID is populated for future records
 
-            for j in range(2):  # For two images per patient
-                image_identifier = f"Image_{patient_code}_{j}.jpg"
-                image = Image(filename=image_identifier, reader="OPENSLIDE", patient=patient)
-                session.add(image)
-                session.flush()  # Flush so that Image ID is populated for future records
+            mask = Mask(filename=str(mask_path), reader="GEOJSON", image=image)
+            session.add(mask)
 
-                mask_filename = f"{image_identifier}_mask.json"
-                mask = Mask(filename=mask_filename, reader="GEOJSON", image=image)
-                session.add(mask)
+            image_annotation = ImageAnnotations(filename=str(annotation_path), image=image)
+            session.add(image_annotation)
 
-                annotation_data = f"Annotation data for {image_identifier}"  # This is just dummy data
-                image_annotation = ImageAnnotations(annotation_data=annotation_data, image=image)
-                session.add(image_annotation)
-
-                label_data = (
-                    "cancer" if random.choice([True, False]) else "benign"
-                )  # Randomly decide if it's cancer or benign
-                image_label = ImageLabels(label_data=label_data, image=image)
-                session.add(image_label)
-
-            # Assigning splits for each patient
-            if i <= 30:
-                split_category = "train"
-            elif 31 <= i <= 60:
-                split_category = "validate"
-            else:
-                split_category = "test"
-
-            split = Split(category=split_category, patient=patient, split_definition=split_definition)
-            session.add(split)
-
-        session.commit()  # Commit all changes to the database
+            label_data = (
+                "cancer" if random.choice([True, False]) else "benign"
+            )  # Randomly decide if it's cancer or benign
+            image_label = ImageLabels(label_data=label_data, image=image)
+            session.add(image_label)
 
 
 if __name__ == "__main__":
     create_tables()
-    populate_with_dummies()
+    populate_from_annotated_tcga("")
