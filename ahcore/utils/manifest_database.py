@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
+from sqlalchemy.orm.query import Query
 
 
 class CategoryEnum(PyEnum):
@@ -150,7 +151,7 @@ def populate_from_annotated_tcga(annotation_folder: Path, path_to_mapping: Path)
             mask_path = folder / "masks.json"
 
             # Only add patient if it doesn't exist
-            existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()
+            existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
             if existing_patient:
                 patient = existing_patient
             else:
@@ -188,11 +189,49 @@ def populate_from_annotated_tcga(annotation_folder: Path, path_to_mapping: Path)
         session.commit()
 
 
+def get_records_by_split(manifest_name: str, split_version: str, split_category: str):
+    with SessionLocal() as session:
+        # First, we fetch the relevant manifest and split definition
+        manifest = session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
+        split_definition = session.query(SplitDefinitions).filter_by(version=split_version).first()  # type:ignore
+
+        # Ensure manifest and split_definition exists
+        if not manifest or not split_definition:
+            raise ValueError("Manifest or Split Definition not found")
+
+        # Fetch patients that belong to the manifest and have the desired split
+        patients = (
+            session.query(Patient)  # type: ignore
+            .join(Split)
+            .filter(
+                Patient.manifest_id == manifest.id,
+                Split.split_definition_id == split_definition.id,
+                Split.category == split_category,
+            )
+            .all()
+        )
+
+        for patient in patients:
+            images = patient.images
+
+            for image in images:
+                mask = next((m for m in image.masks), None)
+                image_annotation = next((ia for ia in image.annotations), None)
+                image_label = next((il for il in image.labels), None)
+                patient_label = next((pl for pl in patient.labels if pl.key == "study"), None)
+
+                yield patient, image, mask, image_annotation, image_label, patient_label
+
+
 if __name__ == "__main__":
-    create_tables()
+    # create_tables()
     annotation_folder = Path(
         "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
     )
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
 
-    populate_from_annotated_tcga(annotation_folder, path_to_mapping)
+    # populate_from_annotated_tcga(annotation_folder, path_to_mapping)
+
+    gen = get_records_by_split("TCGA Breast Annotations v20230228", "v1", "train")
+    for patient, image, mask, image_annotation, image_label, patient_label in gen:
+        print(patient.patient_code)
