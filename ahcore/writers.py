@@ -141,7 +141,7 @@ class H5FileImageWriter:
             with h5py.File(self._filename.with_suffix(".h5.partial"), "w") as h5file:
                 first_coordinates, first_batch = next(batch_generator)
                 self.init_writer(first_batch, h5file)
-                
+
                 # For mypy
                 assert self._grid, "Grid is not initialized"
                 assert self._tile_indices, "Tile indices are not initialized"
