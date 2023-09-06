@@ -156,9 +156,10 @@ class H5FileImageReader:
         fractional_end = tuple(fs + size[i] / scaling for i, fs in enumerate(fractional_start))
 
         # Create an array of coordinates for map_coordinates
+        # mypy doesn't properly understand yet that the complex type is valid
         coordinates = np.mgrid[
-            fractional_start[0] : fractional_end[0] : complex(size[0]),
-            fractional_start[1] : fractional_end[1] : complex(size[1]),
+            fractional_start[0] : fractional_end[0] : complex(size[0]),  # type: ignore
+            fractional_start[1] : fractional_end[1] : complex(size[1]),  # type: ignore
         ]
         coordinates = np.moveaxis(coordinates, 0, -1)
 
