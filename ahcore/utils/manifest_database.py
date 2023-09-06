@@ -130,11 +130,7 @@ def get_patient_from_tcga_id(tcga_filename: str) -> str:
     return tcga_filename[:12]
 
 
-def populate_from_annotated_tcga(path: Path) -> str:
-    annotation_folder = Path(
-        "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
-    )
-    path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
+def populate_from_annotated_tcga(annotation_folder: Path, path_to_mapping: Path):
     with open(path_to_mapping, "r") as f:
         mapping = json.load(f)
 
@@ -189,7 +185,14 @@ def populate_from_annotated_tcga(path: Path) -> str:
             image_label = ImageLabels(label_data=label_data, image=image)
             session.add(image_label)
 
+        session.commit()
+
 
 if __name__ == "__main__":
     create_tables()
-    populate_from_annotated_tcga("")
+    annotation_folder = Path(
+        "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
+    )
+    path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
+
+    populate_from_annotated_tcga(annotation_folder, path_to_mapping)
