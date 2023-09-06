@@ -222,21 +222,12 @@ def inference(config: DictConfig) -> None:
                 config.augmentations[stage], data_description=data_description
             )
 
-    # Init trackers
-    trackers: list[Any] = []
-    if "trackers" in config:
-        for _, tr_conf in config.trackers.items():
-            if "_target_" in tr_conf:
-                logger.info("Instantiating tracker <%s>", tr_conf._target_)  # noqa
-                trackers.append(hydra.utils.instantiate(tr_conf))
-
     # Init lightning model
     if not config.lit_module.get("_target_"):
         raise NotImplementedError(f"No model target found in <{config.lit_module}>")
     logger.info(f"Instantiating model <{config.lit_module._target_}>")  # noqa
     model: LightningModule = hydra.utils.instantiate(
         config.lit_module,
-        trackers=trackers,
         augmentations=augmentations,
         data_description=data_description,
         _convert_="partial",

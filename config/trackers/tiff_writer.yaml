@@ -1,6 +1,0 @@
-tiff_writer:
-  _target_: ahcore.trackers.TiffWriter
-  save_dir: ${paths.output_dir}/tiffwriter
-  pyramid: True
-  compression: jpeg
-  quality: 100

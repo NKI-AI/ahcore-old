@@ -52,7 +52,6 @@ class AhCoreLightningModule(pl.LightningModule):
         metrics: dict[str, nn.Module] | None = None,
         scheduler: Any | None = None,  # noqa
         attach_feature_layers: list[str] | None = None,
-        trackers: list[Any] | None = None,
     ):
         super().__init__()
 
@@ -64,7 +63,6 @@ class AhCoreLightningModule(pl.LightningModule):
                 "metrics",
                 "data_description",
                 "loss",
-                "trackers",
             ],
         )  # TODO: we should send the hyperparams to the logger elsewhere
 
@@ -76,11 +74,6 @@ class AhCoreLightningModule(pl.LightningModule):
         if metrics is not None:
             self._metrics = metrics.get("tile_level")
             self._wsi_metrics = metrics.get("wsi_level")
-
-        if not trackers:
-            self._trackers = []
-        else:
-            self._trackers = trackers
 
         self._data_description = data_description
         self._attach_feature_layers = attach_feature_layers
@@ -262,15 +255,7 @@ class AhCoreLightningModule(pl.LightningModule):
         return gathered_predictions
 
     def on_predict_epoch_end(self, results) -> None:
-        """Call all the inference trackers to update"""
-        self.update_predict_trackers(results)
         self.predict_metadata = self.INFERENCE_DICT  # reset the metadata
-
-    @rank_zero_only
-    def update_predict_trackers(self, results):
-        """On rank zero we update the trackers"""
-        for tracker in self._trackers:
-            tracker(results, self.predict_metadata)
 
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params=self.parameters())

@@ -10,9 +10,6 @@ defaults:
   - task: segmentation_inference.yaml
   - logger: null
   - lit_module: ???
-  - trackers:
-    - tiff_writer
-    - disk_dump
   - trainer: default.yaml
   - hydra: default.yaml  # if we want to setup different hydra logging dirs / color log
   - paths: default.yaml

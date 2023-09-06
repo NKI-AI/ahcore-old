@@ -1,3 +1,0 @@
-disk_dump:
-  _target_: ahcore.trackers.DumpToDisk
-  save_dir: ${paths.output_dir}/pred_disk_dump
