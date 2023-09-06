@@ -1,12 +1,10 @@
 # encoding: utf-8
 import json
 import random
-from enum import Enum as PyEnum
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, create_engine, func
-from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
-from sqlalchemy.orm.query import Query
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from ahcore.utils.database_models import Base, Manifest, Patient, PatientLabels, Split, SplitDefinitions, ImageLabels, ImageAnnotations, Image, Mask
 
@@ -128,13 +126,12 @@ def get_records_by_split(session, manifest_name: str, split_version: str, split_
 
 
 if __name__ == "__main__":
-    # create_tables()
     annotation_folder = Path(
         "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
     )
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
     with open_db("tcga.db") as session:
-            # populate_from_annotated_tcga(session, annotation_folder, path_to_mapping)
+        # populate_from_annotated_tcga(session, annotation_folder, path_to_mapping)
 
         gen = get_records_by_split(session, "TCGA Breast Annotations v20230228", "v1", "train")
         for patient, image, mask, image_annotation, image_label, patient_label in gen:
