@@ -6,6 +6,7 @@ from typing import Any, Optional, Type
 
 import torch
 import torch.nn as nn
+from torch.utils.hooks import RemovableHandle
 
 
 class ExtractFeaturesHook:
@@ -37,8 +38,8 @@ class ExtractFeaturesHook:
     def __init__(self, model: nn.Module, *, layer_names: list[str] | None):
         self.model = model
         self.layer_names = layer_names if layer_names is not None else []
-        self.hooks = []
-        self.features = {}
+        self.hooks: list[RemovableHandle] = []
+        self.features: dict[str, torch.Tensor] = {}
 
     def save_output(
         self,
