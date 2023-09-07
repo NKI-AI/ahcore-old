@@ -215,7 +215,7 @@ def image_manifest_to_dataset(
     tile_overlap: tuple[int, int],
     output_tile_size: tuple[int, int] | None = None,
     transform: Optional[Callable] = None,
-    stage: str = TrainerFn.FITTING,
+    stage: Optional[str] = TrainerFn.FITTING,
 ) -> TiledROIsSlideImageDataset:
     """Create a `TiledROIsSlideImageDataset` from an `ImageManifest`.
 

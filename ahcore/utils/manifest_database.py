@@ -6,9 +6,21 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from ahcore.utils.database_models import Base, Manifest, Patient, PatientLabels, Split, SplitDefinitions, ImageLabels, ImageAnnotations, Image, Mask
+from ahcore.utils.database_models import (
+    Base,
+    Image,
+    ImageAnnotations,
+    ImageLabels,
+    Manifest,
+    Mask,
+    Patient,
+    PatientLabels,
+    Split,
+    SplitDefinitions,
+)
 
 DATABASE_URL_TEMPLATE = "sqlite:///{filename}"
+
 
 def open_db(filename: str):
     engine = create_engine(DATABASE_URL_TEMPLATE.format(filename=filename))
@@ -16,11 +28,14 @@ def open_db(filename: str):
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
 
+
 def create_tables(engine):
     Base.metadata.create_all(bind=engine)
 
+
 def insert_record(session, record):
     session.add(record)
+
 
 def get_or_create_patient(session, patient_code, manifest):
     existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()
@@ -83,9 +98,7 @@ def populate_from_annotated_tcga(session, annotation_folder: Path, path_to_mappi
         image_annotation = ImageAnnotations(filename=str(annotation_path), image=image)
         session.add(image_annotation)
 
-        label_data = (
-            "cancer" if random.choice([True, False]) else "benign"
-        )  # Randomly decide if it's cancer or benign
+        label_data = "cancer" if random.choice([True, False]) else "benign"  # Randomly decide if it's cancer or benign
         image_label = ImageLabels(label_data=label_data, image=image)
         session.add(image_label)
 

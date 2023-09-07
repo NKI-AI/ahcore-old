@@ -193,7 +193,7 @@ class AhCoreLightningModule(pl.LightningModule):
 
         output_size = (_input.shape[0], self._num_classes, *_input.shape[2:])
         _predictions = torch.zeros([self._tta_steps, *output_size], device=self.device)
-        _collected_features = {k: None for k in self._attach_feature_layers}
+        _collected_features = {k: None for k in self._attach_feature_layers} if self._attach_feature_layers else {}
 
         with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
             for idx, augmentation in enumerate(self._tta_augmentations):
