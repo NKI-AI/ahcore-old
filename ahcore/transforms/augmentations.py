@@ -122,8 +122,8 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        scale_sigma: float | tuple[float, float, float],
-        bias_sigma: float | tuple[float, float, float],
+        scale_sigma: float | list[float] | ListConfig,
+        bias_sigma: float | list[float] | ListConfig,
         epsilon: float = 1e-6,
         p: float = 0.5,
         p_batch: float = 1.0,
@@ -137,9 +137,9 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 
         Parameters
         ----------
-        scale_sigma: float or tuple of floats
+        scale_sigma: float, ListConfig or list of floats
             For each channel in the HED space a random scaling factor is drawn from alpha_i ~ U(1-sigma_i,1+sigma_i).
-        bias_sigma: float or tuple of floats
+        bias_sigma: float, ListConfig or list of floats
             For each channel in the HED space a random bias is added drawn from beta_i ~ U(-sigma_i,sigma_i).
         epsilon: float
             Small positive bias to avoid numerical errors
@@ -150,18 +150,18 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         [2] Ruifrok AC, Johnston DA. Quantification of histochemical staining by color deconvolution. Anal Quant Cytol Histol. 2001 Aug;23(4):291-9. PMID: 11531144.
         """
         super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
-        if (isinstance(scale_sigma, tuple) and len(scale_sigma) != 3) or (
-            isinstance(bias_sigma, tuple) and len(bias_sigma) != 3
+        if (isinstance(scale_sigma, (list, ListConfig)) and len(scale_sigma) != 3) or (
+            isinstance(bias_sigma, (list, ListConfig)) and len(bias_sigma) != 3
         ):
             raise ValueError(
                 f"scale_sigma and bias_sigma should have either 1 or 3 values, got {scale_sigma} and {bias_sigma} instead."
             )
 
         if isinstance(scale_sigma, float):
-            scale_sigma = tuple([scale_sigma for _ in range(3)])
+            scale_sigma = [scale_sigma for _ in range(3)]
 
         if isinstance(bias_sigma, float):
-            bias_sigma = tuple([bias_sigma for _ in range(3)])
+            bias_sigma = [bias_sigma for _ in range(3)]
 
         _scale_sigma = torch.tensor(scale_sigma)
         _bias_sigma = torch.tensor(bias_sigma)
@@ -180,11 +180,10 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 
     def apply_transform(
         self,
-        sample: torch.Tensor,
+        input: torch.Tensor,
         params: dict[str, torch.Tensor],
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
-        data_keys: list[str | int | DataKey] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -193,14 +192,13 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         assert flags, "Flags should be provided"
         assert params, "Params should be provided"
 
-        epsilon = flags["epsilon"].to(sample)
-        reference_matrix = flags["M"].to(sample)
-        reference_matrix_inv = flags["M_inv"].to(sample)
+        epsilon = flags["epsilon"].to(input)
+        reference_matrix = flags["M"].to(input)
+        reference_matrix_inv = flags["M_inv"].to(input)
+        alpha = params["scale"][:, None, None, :].to(input)
+        beta = params["bias"][:, None, None, :].to(input)
 
-        alpha = params["scale"][:, None, None, :].to(sample)
-        beta = params["bias"][:, None, None, :].to(sample)
-
-        rgb_tensor = sample.permute(0, 2, 3, 1)
+        rgb_tensor = input.permute(0, 2, 3, 1)
         optical_density = -torch.log(rgb_tensor + epsilon)
         hed_tensor = optical_density @ reference_matrix_inv
 
@@ -227,7 +225,7 @@ class CenterCrop(nn.Module):
     def forward(
         self,
         *sample: torch.Tensor,
-        data_keys: list[str | int | DataKey] = None,
+        data_keys: Optional[list[str | int | DataKey]] = None,
         **kwargs,
     ):
         output = [self._cropper(item) for item in sample]
