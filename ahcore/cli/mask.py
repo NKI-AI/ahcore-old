@@ -60,6 +60,7 @@ def create_wsi_iterator(args: argparse.Namespace, json_manifest: dict):
     # TODO: Allow empty values for most of the below
     data_description = DataDescription(
         data_dir=args.image_directory,
+        dataset_split_path=Path(""),
         manifest_path=Path(""),
         mask_label="mask",
         mask_threshold=0.5,
