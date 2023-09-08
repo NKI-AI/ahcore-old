@@ -3,9 +3,7 @@
 dataset."""
 from __future__ import annotations
 
-import csv
-from pathlib import Path
-from typing import Callable, Union
+from typing import Callable
 
 import numpy as np
 import torch

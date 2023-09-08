@@ -20,7 +20,6 @@ from ahcore.utils.database_models import (
     Split,
     SplitDefinitions,
 )
-
 from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
@@ -133,7 +132,6 @@ def get_records_by_split(session, manifest_name: str, split_version: str, split_
     if split_category == "fit":
         split_category = "train"
 
-
     # First, we fetch the relevant manifest and split definition
     manifest = session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
     split_definition = session.query(SplitDefinitions).filter_by(version=split_version).first()  # type:ignore
@@ -158,6 +156,7 @@ def get_records_by_split(session, manifest_name: str, split_version: str, split_
 
     for patient in patients:
         yield patient
+
 
 if __name__ == "__main__":
     annotation_folder = Path(

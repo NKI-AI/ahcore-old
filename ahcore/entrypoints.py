@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 import pathlib
 from pprint import pformat
-from typing import Any
 
 import hydra
 import torch

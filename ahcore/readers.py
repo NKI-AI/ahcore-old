@@ -6,7 +6,6 @@ from enum import Enum
 import h5py
 import numpy as np
 import numpy.typing as npt
-from dlup.types import GenericNumber
 from scipy.ndimage import map_coordinates
 
 from ahcore.utils.io import get_logger

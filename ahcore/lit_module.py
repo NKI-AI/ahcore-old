@@ -12,7 +12,6 @@ import pytorch_lightning as pl
 import torch.optim.optimizer
 from dlup.data.dataset import ConcatDataset
 from pytorch_lightning.trainer.states import TrainerFn
-from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 

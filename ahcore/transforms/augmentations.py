@@ -326,7 +326,6 @@ class AugmentationFactory(nn.Module):
             for transform in final_transforms:
                 logger.info("Using final transform %s", transform)
         self._final_transforms = nn.ModuleList(final_transforms)
-        self._overwrite_mpp = data_module.overwrite_mpp
 
     def forward(self, sample):
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
@@ -334,7 +333,6 @@ class AugmentationFactory(nn.Module):
             kwargs = {
                 "data_keys": self._data_keys,
                 "filenames": sample["path"],
-                "overwrite_mpp": self._overwrite_mpp,
             }
             for transform in self._initial_transforms:
                 output_data = transform(*output_data, **kwargs)

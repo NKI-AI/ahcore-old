@@ -14,7 +14,6 @@ import numpy as np
 import numpy.typing as npt
 import pytorch_lightning as pl
 import torch
-import torch.distributed as dist
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
@@ -28,9 +27,8 @@ from torch.utils.data import Dataset
 
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
-from ahcore.utils.data import GridDescription
+from ahcore.utils.data import DataDescription, GridDescription
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest import DataDescription, ImageManifest, _ImageBackends, _parse_annotations
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
@@ -456,8 +454,6 @@ class ComputeWsiMetricsCallback(Callback):
         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
 
         self._wsi_metrics = None
-
-        self._validation_manifests: dict[str, ImageManifest] = {}
 
         self._dump_list: list[dict[str, str]] = []
 

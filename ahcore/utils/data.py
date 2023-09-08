@@ -6,7 +6,7 @@ import hashlib
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Dict, Optional, Protocol, TypedDict
+from typing import Optional, TypedDict
 
 from dlup.data.dataset import TiledROIsSlideImageDataset
 
@@ -42,22 +42,20 @@ class DataDescription:
     mask_threshold: Optional[float]  # This is only used for training
     roi_name: Optional[str]
     num_classes: int
-    dataset_split_path: Optional[Path]
     data_dir: Path
-    manifest_path: Path
+    # TODO maybe this is just an env var?
+    manifest_database_path: Path
+    manifest_name: str
+    split_version: str
+
     annotations_dir: Path
 
     training_grid: GridDescription
     inference_grid: GridDescription
 
     index_map: Optional[dict[str, int]]
-    max_val_tiffs: Optional[int] = None
-    extract_center: Optional[bool] = False
     remap_labels: Optional[dict[str, str]] = None
-    colors: Optional[dict[str, str]] = None
     use_class_weights: Optional[bool] = False
-    normalize_mean: Optional[list[float]] = None
-    normalize_std: Optional[list[float]] = None
     convert_mask_to_rois: bool = True
     use_roi: bool = True
 

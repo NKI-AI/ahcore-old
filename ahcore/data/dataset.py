@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, Sampler
 import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
-from ahcore.utils.manifest import image_manifest_to_dataset, manifests_from_data_description
+from ahcore.utils.manifest import datasets_from_data_description
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -72,7 +72,6 @@ class DlupDataModule(pl.LightningDataModule):
 
         # Data settings
         self.data_description: DataDescription = data_description
-        self._manifests = manifests_from_data_description(data_description)
 
         self._batch_size = self.hparams.batch_size  # type: ignore
         self._validate_batch_size = self.hparams.validate_batch_size  # type: ignore
@@ -101,42 +100,7 @@ class DlupDataModule(pl.LightningDataModule):
             "test": False,
             "predict": False,
         }
-
-        for field in self._manifests._fields:
-            self._logger.info(
-                "Number of images for stage %s: %s",
-                field,
-                getattr(self._manifests, field).__len__(),
-            )
-
         self._num_classes = data_description.num_classes
-
-        # This has the overwriting
-        self._overwrite_mpp = {}
-        for manifest_name in ["fit", "validate", "test", "predict"]:
-            for manifest in getattr(self._manifests, manifest_name):
-                if manifest.mpp:
-                    self._overwrite_mpp[data_description.data_dir / manifest.image[0]] = manifest.mpp
-
-    @property
-    def overwrite_mpp(self):
-        return self._overwrite_mpp
-
-    @property
-    def fit_manifest(self):
-        return self._manifests.fit
-
-    @property
-    def val_manifest(self):
-        return self._manifests.validate
-
-    @property
-    def test_manifest(self):
-        return self._manifests.test
-
-    @property
-    def predict_manifest(self):
-        return self._manifests.predict
 
     def setup(self, stage: Optional[str] = None) -> None:
         if not stage:
@@ -144,45 +108,16 @@ class DlupDataModule(pl.LightningDataModule):
 
         if stage and self._already_called[stage]:
             return
-        self._logger.info("Constructing dataset iterator for stage %s", stage)
-        manifests = getattr(self._manifests, stage)
-        if not manifests:
-            setattr(self, f"_{stage}_data_iterator", None)
-            return
 
-        grid = getattr(
-            self.data_description,
-            "training_grid" if stage == TrainerFn.FITTING else "inference_grid",
-        )
-        mpp = getattr(grid, "mpp", None)
-        tile_size = grid.tile_size
-        tile_overlap = grid.tile_overlap
-        output_tile_size = getattr(grid, "output_tile_size", None)
+        self._logger.info("Constructing dataset iterator for stage %s", stage)
 
         def dataset_iterator() -> Iterator[Dataset]:
-            for image_manifest in manifests:
-                dataset = image_manifest_to_dataset(
-                    manifest=image_manifest,
-                    data_description=self.data_description,
-                    mpp=mpp,
-                    tile_size=tile_size,
-                    tile_overlap=tile_overlap,
-                    output_tile_size=output_tile_size,
-                    transform=self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
-                    stage=stage,
-                )
-
-                # Each time we see a dataset we find its mpp
-                filename = self.data_description.data_dir / image_manifest.image[0]
-                curr_mpp = dataset.slide_image.mpp
-
-                self._logger.info(
-                    "Added dataset for %s with length %s (filename=%s, original mpp=%s).",
-                    image_manifest.identifier,
-                    len(dataset),
-                    filename,
-                    curr_mpp,
-                )
+            gen = datasets_from_data_description(
+                self.data_description,
+                self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
+                stage,
+            )
+            for dataset in gen:
                 yield dataset
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
