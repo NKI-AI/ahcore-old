@@ -1,7 +1,7 @@
 # encoding: utf-8
 from enum import Enum as PyEnum
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, func
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -44,6 +44,10 @@ class Image(Base):
     reader = Column(String)
     patient_id = Column(Integer, ForeignKey("patient.id"))
 
+    height = Column(Integer)
+    width = Column(Integer)
+    mpp = Column(Float)
+
     patient = relationship("Patient", back_populates="images")
     masks = relationship("Mask", back_populates="image")
     annotations = relationship("ImageAnnotations", back_populates="image")
@@ -64,6 +68,7 @@ class ImageAnnotations(Base):
     __tablename__ = "image_annotations"
     id = Column(Integer, primary_key=True)
     filename = Column(String, unique=True)
+    reader = Column(String)
     image_id = Column(Integer, ForeignKey("image.id"))
 
     image = relationship("Image", back_populates="annotations")

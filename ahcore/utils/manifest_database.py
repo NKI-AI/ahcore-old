@@ -3,6 +3,8 @@ import json
 import random
 from pathlib import Path
 
+from dlup import SlideImage, UnsupportedSlideError
+from dlup.experimental_backends import ImageBackend
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -19,10 +21,14 @@ from ahcore.utils.database_models import (
     SplitDefinitions,
 )
 
+from ahcore.utils.io import get_logger
+
+logger = get_logger(__name__)
+
 DATABASE_URL_TEMPLATE = "sqlite:///{filename}"
 
 
-def open_db(filename: str):
+def open_db(filename: Path):
     engine = create_engine(DATABASE_URL_TEMPLATE.format(filename=filename))
     create_tables(engine)
     SessionLocal = sessionmaker(bind=engine)
@@ -51,7 +57,9 @@ def get_patient_from_tcga_id(tcga_filename: str) -> str:
     return tcga_filename[:12]
 
 
-def populate_from_annotated_tcga(session, annotation_folder: Path, path_to_mapping: Path):
+def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder: Path, path_to_mapping: Path):
+    # TODO: We should do the mpp as well here
+
     with open(path_to_mapping, "r") as f:
         mapping = json.load(f)
     manifest = Manifest(name="TCGA Breast Annotations v20230228")
@@ -66,7 +74,7 @@ def populate_from_annotated_tcga(session, annotation_folder: Path, path_to_mappi
         patient_code = get_patient_from_tcga_id(folder.name)
 
         annotation_path = folder / "annotations.json"
-        mask_path = folder / "masks.json"
+        mask_path = folder / "roi.json"
 
         # Only add patient if it doesn't exist
         existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
@@ -88,14 +96,28 @@ def populate_from_annotated_tcga(session, annotation_folder: Path, path_to_mappi
         session.flush()
 
         filename = mapping[folder.name]
-        image = Image(filename=str(filename), reader="OPENSLIDE", patient=patient)
+
+        # TODO: OPENSLIDE doesn't work
+        kwargs = {}
+        if (
+            "TCGA-OL-A5RY-01Z-00-DX1.AE4E9D74-FC1C-4C1E-AE6D-5DF38899BBA6.svs" in filename
+            or "TCGA-OL-A5RW-01Z-00-DX1.E16DE8EE-31AF-4EAF-A85F-DB3E3E2C3BFF.svs" in filename
+        ):
+            kwargs["overwrite_mpp"] = (0.25, 0.25)
+
+        with SlideImage.from_file_path(image_folder / filename, backend=ImageBackend.PYVIPS, **kwargs) as slide:
+            mpp = slide.mpp
+            width, height = slide.size
+            image = Image(
+                filename=str(filename), mpp=mpp, height=height, width=width, reader="OPENSLIDE", patient=patient
+            )
         session.add(image)
         session.flush()  # Flush so that Image ID is populated for future records
 
         mask = Mask(filename=str(mask_path), reader="GEOJSON", image=image)
         session.add(mask)
 
-        image_annotation = ImageAnnotations(filename=str(annotation_path), image=image)
+        image_annotation = ImageAnnotations(filename=str(annotation_path), reader="GEOJSON", image=image)
         session.add(image_annotation)
 
         label_data = "cancer" if random.choice([True, False]) else "benign"  # Randomly decide if it's cancer or benign
@@ -106,6 +128,12 @@ def populate_from_annotated_tcga(session, annotation_folder: Path, path_to_mappi
 
 
 def get_records_by_split(session, manifest_name: str, split_version: str, split_category: str):
+    # TODO: Rename this in the db
+
+    if split_category == "fit":
+        split_category = "train"
+
+
     # First, we fetch the relevant manifest and split definition
     manifest = session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
     split_definition = session.query(SplitDefinitions).filter_by(version=split_version).first()  # type:ignore
@@ -126,26 +154,16 @@ def get_records_by_split(session, manifest_name: str, split_version: str, split_
         .all()
     )
 
+    logger.info(f"Found {len(patients)} patients for split {split_category}")
+
     for patient in patients:
-        images = patient.images
-
-        for image in images:
-            mask = next((m for m in image.masks), None)
-            image_annotation = next((ia for ia in image.annotations), None)
-            image_label = next((il for il in image.labels), None)
-            patient_label = next((pl for pl in patient.labels if pl.key == "study"), None)
-
-            yield patient, image, mask, image_annotation, image_label, patient_label
-
+        yield patient
 
 if __name__ == "__main__":
     annotation_folder = Path(
         "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
     )
+    image_folder = Path("/data/groups/aiforoncology/archive/pathology/TCGA/images/")
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
-    with open_db("tcga.db") as session:
-        # populate_from_annotated_tcga(session, annotation_folder, path_to_mapping)
-
-        gen = get_records_by_split(session, "TCGA Breast Annotations v20230228", "v1", "train")
-        for patient, image, mask, image_annotation, image_label, patient_label in gen:
-            print(patient.patient_code)
+    with open_db("manifest.db") as session:
+        populate_from_annotated_tcga(session, image_folder, annotation_folder, path_to_mapping)
