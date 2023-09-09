@@ -16,14 +16,14 @@ with open("README.md") as readme_file:
     long_description = readme_file.read()
 
 install_requires = [
-    "numpy>=1.24.1",
+    "numpy>=1.25.2",
     "torch>=2.0.1",
     "pillow>=9.5.0",
-    "pytorch-lightning>=2.0.2",
+    "pytorch-lightning>=2.0.8",
     "torchvision>=0.15.2",
-    "pydantic>=1.10.8",
-    "tensorboard>=2.9",
-    "mlflow>=2.3.2",
+    "pydantic>=2.0.3",
+    "tensorboard>=2.14.0",
+    "mlflow>=2.6.0",
     "hydra-core>=1.3.2",
     "python-dotenv>=1.0.0",
     "tqdm>=4.64",
@@ -31,8 +31,8 @@ install_requires = [
     "hydra-submitit-launcher>=1.2.0",
     "hydra-optuna-sweeper>=1.3.0.dev0",
     "hydra-colorlog>=1.2.0",
-    "dlup>=0.3.25",
-    "kornia>=0.6.12",
+    "dlup>=0.3.26",
+    "kornia>=0.7.0",
     "h5py>=3.8.0",
     # "escnn>=1.0.8",  # To use equivariant unets
     "monai[einops]==1.2.0",
@@ -43,7 +43,7 @@ setup(
     author="AI for Oncology Lab @ The Netherlands Cancer Institute",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     classifiers=[
         "Development Status :: 1 - Planning",
         "Natural Language :: English",

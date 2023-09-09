@@ -16,7 +16,7 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 import ahcore.transforms.augmentations
-from ahcore.utils.data import DataDescription, InferenceMetadata
+from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.model import ExtractFeaturesHook
 
@@ -34,12 +34,6 @@ class AhCoreLightningModule(pl.LightningModule):
         "grid_local_coordinates",
         "grid_index",
     ]
-    INFERENCE_DICT: InferenceMetadata = {
-        "mpp": None,
-        "size": None,
-        "tile_size": None,
-        "filename": None,
-    }
 
     def __init__(
         self,
@@ -77,7 +71,6 @@ class AhCoreLightningModule(pl.LightningModule):
         self._data_description = data_description
         self._attach_feature_layers = attach_feature_layers
 
-        self.predict_metadata: InferenceMetadata = self.INFERENCE_DICT  # Used for saving metadata during prediction
         self._validation_dataset: ConcatDataset | None = None
 
         # Setup test-time augmentation
@@ -122,14 +115,14 @@ class AhCoreLightningModule(pl.LightningModule):
         prediction: torch.Tensor,
         target: torch.Tensor,
         roi: torch.Tensor | None,
-        stage: TrainerFn,
+        stage: TrainerFn | str,
     ) -> dict[str, torch.Tensor]:
         if not self._metrics:
             return {}
         metrics = {f"{self.STAGE_MAP[stage]}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
-    def do_step(self, batch, batch_idx: int, stage: TrainerFn):
+    def do_step(self, batch, batch_idx: int, stage: TrainerFn | str):
         if self._augmentations and stage in self._augmentations:
             batch = self._augmentations[stage](batch)
 
@@ -151,8 +144,6 @@ class AhCoreLightningModule(pl.LightningModule):
         else:
             batch = {**batch, **self._get_inference_prediction(batch["image"])}
             _prediction = batch["prediction"]
-
-        # FIXME: The loss seems to be only one dimensional. shouldn't it be size of classes or per batch sample??
 
         loss = self._loss(_prediction, _target, roi)
 
@@ -191,8 +182,9 @@ class AhCoreLightningModule(pl.LightningModule):
     def _get_inference_prediction(self, _input: torch.Tensor) -> dict[str, torch.Tensor]:
         output = {}
 
-        output_size = (_input.shape[0], self._num_classes, *_input.shape[2:])
-        _predictions = torch.zeros([self._tta_steps, *output_size], device=self.device)
+        output_size = (self._tta_steps, _input.shape[0], self._num_classes, *map(int, _input.shape[2:]))
+        # FIXME: this mypy error I can't figure. Pytorch documentation says it can be tuple[int,...]
+        _predictions = torch.zeros(output_size, device=self.device)  # type: ignore
         _collected_features = {k: None for k in self._attach_feature_layers} if self._attach_feature_layers else {}
 
         with ExtractFeaturesHook(self._model, layer_names=self._attach_feature_layers) as hook:
@@ -205,7 +197,7 @@ class AhCoreLightningModule(pl.LightningModule):
                     for key in _features:
                         if _collected_features[key] is None:
                             _collected_features[key] = torch.zeros(
-                                [self._tta_steps, *_features[key].size()],
+                                (self._tta_steps, *map(int, _features[key].size())),  # type: ignore
                                 device=self.device,
                             )
                         _features[key] = _collected_features[key]
@@ -218,9 +210,12 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
-        if self.global_step == 0:
-            if self._tensorboard:
-                self._tensorboard.add_graph(self._model, batch["image"])
+        # FIXME: This gives very weird errors...
+        del batch["labels"]
+
+        # if self.global_step == 0:
+        #     if self._tensorboard:
+        #         self._tensorboard.add_graph(self._model, batch["image"])
 
         output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
         return output
@@ -239,12 +234,8 @@ class AhCoreLightningModule(pl.LightningModule):
             self.trainer, "datamodule"
         ), "Datamodule is not defined for the trainer. Required for validation"
         datamodule: AhCoreLightningModule = cast(AhCoreLightningModule, getattr(self.trainer, "datamodule"))
+        assert hasattr(datamodule, "val_concat_dataset"), "Validation dataset is not defined for the datamodule"
         self._validation_dataset = datamodule.val_concat_dataset
-
-    def on_predict_start(self) -> None:
-        """Check that the metadata exists (necessary for saving output) exists before going through the WSI"""
-        if not self.predict_metadata["filename"]:
-            raise ValueError("Empty predict_metadata found")
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         if self._augmentations:
@@ -254,9 +245,6 @@ class AhCoreLightningModule(pl.LightningModule):
         predictions = self._model(inputs)
         gathered_predictions = self.all_gather(predictions)
         return gathered_predictions
-
-    def on_predict_epoch_end(self, results) -> None:
-        self.predict_metadata = self.INFERENCE_DICT  # reset the metadata
 
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params=self.parameters())

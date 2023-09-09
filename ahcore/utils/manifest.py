@@ -107,7 +107,6 @@ def datasets_from_data_description(data_description: DataDescription, transform,
 
         for record in records:
             labels = [(label.key, label.value) for label in record.labels] if record.labels else None
-            logger.info("Found %s labels for patient %s. (%s)", len(labels), record.patient_code, labels)
 
             for image in record.images:
                 mask = _parse_annotations(annotations_root, image.masks)

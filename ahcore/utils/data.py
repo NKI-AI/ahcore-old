@@ -66,38 +66,3 @@ class GridDescription:
     tile_size: tuple[int, int]
     tile_overlap: tuple[int, int]
     output_tile_size: Optional[tuple[int, int]] = None
-
-
-class InferenceMetadata(TypedDict):
-    mpp: float | None
-    size: tuple[int, int] | None
-    tile_size: tuple[int, int] | None
-    filename: Path | None
-
-
-def create_inference_metadata(
-    dataset: TiledROIsSlideImageDataset,
-    target_mpp: float | None,
-    tile_size: tuple[int, int],
-) -> InferenceMetadata:
-    """Create the metadata for inference.
-
-    Arguments
-    ---------
-    dataset : TiledROIsSlideImageDataset
-        The dataset to create the metadata for.
-    target_mpp : float | None
-        The microns-per-pixel to be used for the tiles. If not set, will select the level 0 resolution.
-    tile_size : tuple[int, int]
-        The size of the tiles.
-    """
-
-    scaling = dataset.slide_image.get_scaling(target_mpp)
-    path = Path(dataset.slide_image.identifier)
-    filename = Path(path.parent.stem) / path.stem
-    scaled_size = dataset.slide_image.get_scaled_size(scaling)
-
-    mpp = target_mpp if target_mpp is not None else dataset.slide_image.mpp
-    metadata = InferenceMetadata(filename=filename, tile_size=tile_size, mpp=mpp, size=scaled_size)
-
-    return metadata

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import abc
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import torch
 import torch.nn.functional as F  # noqa
@@ -152,7 +152,7 @@ class WSIDiceMetric(WSIMetric):
 
     def __init__(self, data_description: DataDescription, compute_overall_dice: bool = False) -> None:
         super().__init__(data_description=data_description)
-        self.wsis = {}
+        self.wsis: dict[str, Any] = {}
         self.compute_overall_dice = compute_overall_dice
         self._num_classes = self._data_description.num_classes
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -182,7 +182,7 @@ class WSIDiceMetric(WSIMetric):
         dice_components = _get_intersection_and_cardinality(
             predictions.to(self._device),
             target.to(self._device),
-            roi.to(self._device),
+            roi.to(self._device) if roi is not None else None,
             self._num_classes,
         )
         for class_idx, (intersection, cardinality) in enumerate(dice_components):
