@@ -112,9 +112,10 @@ def cross_entropy(
     if roi is not None:
         roi_sum = roi.sum() / input.shape[0]
         if roi_sum == 0:
-            return torch.Tensor([0.0]).to(input.device)
+            # Return a loss of zero if there is no ROI of length batch size
+            return torch.tensor([0.0] * input.shape[0], requires_grad=True).to(input.device)
     else:
-        roi_sum = torch.Tensor([np.prod(tuple(input.shape)[2:])]).to(input.device)
+        roi_sum = torch.tensor([np.prod(tuple(input.shape)[2:])]).to(input.device)
 
     if ignore_index is None:
         ignore_index = -100
@@ -128,6 +129,7 @@ def cross_entropy(
         reduction="none",
         label_smoothing=label_smoothing,
     )
+
     if limit is not None:
         _cross_entropy = torch.clip(_cross_entropy, limit, None)
 
