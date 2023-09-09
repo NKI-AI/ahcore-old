@@ -106,8 +106,8 @@ def datasets_from_data_description(data_description: DataDescription, transform,
         )
 
         for record in records:
-            if record.labels is not None:
-                warnings.warn("Labels are not supported yet. Ignoring labels.", UserWarning)
+            labels = [(label.key, label.value) for label in record.labels] if record.labels else None
+            logger.info("Found %s labels for patient %s. (%s)", len(labels), record.patient_code, labels)
 
             for image in record.images:
                 mask = _parse_annotations(annotations_root, image.masks)
@@ -128,7 +128,7 @@ def datasets_from_data_description(data_description: DataDescription, transform,
                     output_tile_size=getattr(grid_description, "output_tile_size", None),
                     rois=rois,  # type: ignore
                     annotations=annotations if stage != TrainerFn.PREDICTING else None,
-                    labels=None,
+                    labels=labels,
                     transform=transform,
                     backend=ImageBackend[image.reader],
                     overwrite_mpp=(image.mpp, image.mpp),

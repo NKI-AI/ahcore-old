@@ -4,7 +4,7 @@ annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230228_combined # 
 manifest_database_path: ${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230228_combined/manifest.db
 mask_label: roi
 mask_threshold: 0.1
-manifest_name: "TCGA Breast Annotations v20230228"
+manifest_name: "v20230228"
 split_version: "v1"
 roi_name: roi  # This is the name of the label that carries the ROI
 use_roi: True

@@ -152,10 +152,12 @@ class AhCoreLightningModule(pl.LightningModule):
             batch = {**batch, **self._get_inference_prediction(batch["image"])}
             _prediction = batch["prediction"]
 
+        # FIXME: The loss seems to be only one dimensional. shouldn't it be size of classes or per batch sample??
+
         loss = self._loss(_prediction, _target, roi)
+
         # The relevant_dict contains values to know where the tiles originate.
         _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
-
         _metrics = self._compute_metrics(_prediction, _target, roi, stage=stage)
         _loss = loss.mean()
         output = {
@@ -167,7 +169,6 @@ class AhCoreLightningModule(pl.LightningModule):
         if stage != TrainerFn.FITTING:
             output["prediction"] = _prediction
 
-        # Log the loss
         self.log(
             f"{self.STAGE_MAP[stage]}/loss",
             _loss,
@@ -217,10 +218,11 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
-        output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
         if self.global_step == 0:
             if self._tensorboard:
                 self._tensorboard.add_graph(self._model, batch["image"])
+
+        output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
         return output
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:

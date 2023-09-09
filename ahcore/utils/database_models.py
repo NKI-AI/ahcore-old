@@ -1,7 +1,7 @@
 # encoding: utf-8
 from enum import Enum as PyEnum
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, func
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -89,6 +89,9 @@ class PatientLabels(Base):
     key = Column(String)
     value = Column(String)
     patient_id = Column(Integer, ForeignKey("patient.id"))
+
+    # Add a unique constraint
+    __table_args__ = (UniqueConstraint("key", "patient_id", name="uq_patient_label_key"),)
 
     patient = relationship("Patient", back_populates="labels")
 
