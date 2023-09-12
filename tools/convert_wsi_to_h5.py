@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import logging
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 from functools import partial
 from logging import getLogger
 from multiprocessing import Pool
 from pathlib import Path
 from pprint import pformat
-from typing import Union
 
 import imageio.v3 as iio
 import numpy as np
@@ -252,6 +249,9 @@ def tiling_pipeline(
     quality: int,
     save_thumbnail: bool = False,
 ) -> None:
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
     try:
         # TODO: Come up with a way to inject the mask later on as well.
         mask = read_mask(mask_path)
@@ -271,7 +271,7 @@ def tiling_pipeline(
             num_samples=len(dataset),
             is_binary=True,
         )
-        save_tiles(dataset, h5_writer, quality, quality)
+        save_tiles(dataset, h5_writer, quality)
         if save_thumbnail:
             thumbnail, mask, overlay = _save_thumbnail(image_path, dataset_cfg, mask)
 
@@ -284,10 +284,9 @@ def tiling_pipeline(
     logger.debug("Working on %s. Writing to %s", image_path, output_file)
 
 
-def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
-    image_path, mask_path, path_id = args
-    _output_directory = save_dir_data / path_id
-    return tiling_pipeline(image_path, mask_path, _output_directory, dataset_cfg, save_thumbnail)
+def wrapper(dataset_cfg, quality, save_thumbnail, args):
+    image_path, mask_path, output_file = args
+    return tiling_pipeline(image_path, mask_path, output_file, dataset_cfg, quality, save_thumbnail)
 
 
 def main():
@@ -301,8 +300,8 @@ def main():
         " where the output directory is with request to --output-dir",
     )
     parser.add_argument(
-        "--output-file",
-        type=file_path,
+        "--output-directory",
+        type=dir_path(require_writable=True),
         required=True,
         help="Path to the output file",
     )
@@ -341,32 +340,35 @@ def main():
         action="store_true",
         help="Filter the list based on if the folders already exist.",
     )
+    parser.add_argument(
+        "--quality",
+        type=int,
+        default=80,
+        help="Quality of the saved tiles in jpg, otherwise png (default: 80)",
+    )
 
     args = parser.parse_args()
     images_list = []
 
     with open(args.file_list, "r") as file_list:
         for line in file_list:
-            image_file, mask_file, output_directory = line.split(",")
-            if (args.output_dir / "data" / Path(output_directory.strip())).is_dir() and args.simple_check:
+            image_file, mask_file, output_filename = line.split(",")
+            if (args.output_directory / "data" / Path(output_filename.strip())).is_dir() and args.simple_check:
                 continue
             images_list.append(
                 (
                     Path(image_file.strip()),
                     Path(mask_file.strip()),
-                    Path(output_directory.strip()),
+                    args.output_directory / "data" / Path(output_filename.strip()),
                 )
             )
 
     logger.info(f"Number of slides: {len(images_list)}")
-    logger.info(f"Output directory: {args.output_dir}")
+    logger.info(f"Output directory: {args.output_directory}")
     logger.info("Tiling...")
 
-    save_dir_data = args.output_dir / "data"
+    save_dir_data = args.output_directory / "data"
     save_dir_data.mkdir(parents=True, exist_ok=True)
-
-    save_dir_meta = args.output_dir / "metadata"
-    save_dir_meta.mkdir(parents=True, exist_ok=True)
 
     crop = False
     tile_mode = TilingMode.overflow
@@ -391,7 +393,7 @@ def main():
         # Convert list of tuples into list of lists
         images_list = [list(item) for item in images_list]
         # Create a partially applied function with dataset_cfg
-        partial_wrapper = partial(wrapper, dataset_cfg, save_dir_data, args.save_thumbnail)
+        partial_wrapper = partial(wrapper, dataset_cfg, args.quality, args.save_thumbnail)
 
         with Progress() as progress:
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
@@ -401,12 +403,13 @@ def main():
     else:
         with Progress() as progress:
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
-            for idx, (image_path, mask_path, path_id) in enumerate(images_list):
+            for idx, (image_path, mask_path, output_file) in enumerate(images_list):
                 tiling_pipeline(
                     image_path,
                     mask_path,
-                    args.output_file,
+                    output_file,
                     dataset_cfg,
+                    quality=args.quality,
                     save_thumbnail=args.save_thumbnail,
                 )
                 progress.update(task, advance=1)

@@ -110,6 +110,7 @@ class H5FileImageWriter:
             "num_tiles": num_tiles,
             "grid_order": "C",
             "mode": "overflow",
+            "is_binary": self._is_binary,
         }
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
