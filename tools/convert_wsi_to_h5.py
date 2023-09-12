@@ -50,42 +50,6 @@ def read_mask(path: Path) -> np.ndarray:
     return iio.imread(path)[..., 0]
 
 
-def load_json(path: Path, encoding: str = "utf-8", **kwargs):
-    """Load json file."""
-    with open(path, "r", encoding=encoding) as json_file:
-        json_obj = json.load(json_file, **kwargs)
-    return json_obj
-
-
-def write_json(
-    obj,
-    path: Path,
-    indent: int | None = 2,
-    **kwargs,
-):
-    """Save in json format."""
-    with open(path, "w", encoding="utf-8") as json_file:
-        json.dump(obj, json_file, indent=indent, **kwargs)
-
-
-def make_serializable(obj):
-    """Makes object serializable"""
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, (np.int32, np.int64)):
-        return int(obj)
-    elif isinstance(obj, Path):
-        return str(obj)
-    elif isinstance(obj, (str, float, int)) or obj is None:
-        return obj
-    elif isinstance(obj, (tuple, list)):
-        return [make_serializable(_) for _ in obj]
-    elif isinstance(obj, dict):
-        return {k: make_serializable(v) for k, v in obj.items()}
-    else:
-        raise RuntimeError(f"Object of type {type(obj)} is not supported.")
-
-
 @dataclass
 class SlideImageMetaData:
     """Metadata of a whole slide image."""
@@ -148,51 +112,52 @@ class DatasetConfigs(BaseModel):
     grid_order: str
 
 
-#
-#
-# def _save_thumbnail(
-#     image_fn: Path,
-#     dataset_cfg: DatasetConfigs,
-#     mask: npt.NDArray[np.uint8],
-#     h5_writer: H5FileImageWriter,
-# ):
-#     target_mpp = max(dataset_cfg.mpp * 30, 30)
-#     tile_size = (
-#         min(30, dataset_cfg.tile_size[0] // 30),
-#         min(30, dataset_cfg.tile_size[1] // 30),
-#     )
-#
-#     dataset = TiledROIsSlideImageDataset.from_standard_tiling(
-#         image_fn,
-#         target_mpp,
-#         tile_size,
-#         (0, 0),
-#         mask=mask,
-#         mask_threshold=dataset_cfg.mask_threshold,
-#     )
-#     scaled_region_view = dataset.slide_image.get_scaled_view(dataset.slide_image.get_scaling(target_mpp))
-#
-#     # Let us write the mask too.
-#     mask_fn = output_fn / "mask.jpg"
-#     mask = PIL.Image.fromarray(mask * 255, mode="L")
-#     mask.save(mask_fn, quality=75)
-#
-#     thumbnail = dataset.slide_image.get_thumbnail(tuple(scaled_region_view.size))
-#     thumbnail_fn = output_fn / "thumbnail.jpg"
-#     thumbnail.convert("RGB").save(thumbnail_fn, quality=75)
-#
-#     background = Image.new("RGBA", tuple(scaled_region_view.size), (255, 255, 255, 255))
-#
-#     for d in dataset:
-#         tile = d["image"]
-#         coords = np.array(d["coordinates"])
-#         box = tuple(np.array((*coords, *(coords + tile_size))).astype(int))
-#         background.paste(tile, box)
-#         # draw = ImageDraw.Draw(background)
-#         # draw.rectangle(box, outline="red")
-#     overlay_fn = output_fn / "overlay.jpg"
-#     background.convert("RGB").save(overlay_fn, quality=75)
-#
+def _save_thumbnail(
+    image_fn: Path,
+    dataset_cfg: DatasetConfigs,
+    mask: npt.NDArray[np.uint8],
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
+    target_mpp = max(dataset_cfg.mpp * 30, 30)
+    tile_size = (
+        min(30, dataset_cfg.tile_size[0] // 30),
+        min(30, dataset_cfg.tile_size[1] // 30),
+    )
+
+    dataset = TiledROIsSlideImageDataset.from_standard_tiling(
+        image_fn,
+        target_mpp,
+        tile_size,
+        (0, 0),
+        mask=mask,
+        mask_threshold=dataset_cfg.mask_threshold,
+    )
+    scaled_region_view = dataset.slide_image.get_scaled_view(dataset.slide_image.get_scaling(target_mpp))
+
+    # Let us write the mask too.
+    mask_io = io.BytesIO()
+    mask = PIL.Image.fromarray(mask * 255, mode="L")
+    mask.save(mask_io, quality=75)
+    mask_arr = np.frombuffer(mask_io.getvalue(), dtype="uint8")
+
+    thumbnail_io = io.BytesIO()
+    thumbnail = dataset.slide_image.get_thumbnail(tuple(scaled_region_view.size))
+    thumbnail.convert("RGB").save(thumbnail_io, quality=75)
+    thumbnail_arr = np.frombuffer(thumbnail_io.getvalue(), dtype="uint8")
+
+    background = Image.new("RGBA", tuple(scaled_region_view.size), (255, 255, 255, 255))
+
+    overlay_io = io.BytesIO()
+    for d in dataset:
+        tile = d["image"]
+        coords = np.array(d["coordinates"])
+        box = tuple(np.array((*coords, *(coords + tile_size))).astype(int))
+        background.paste(tile, box)
+        # draw = ImageDraw.Draw(background)
+        # draw.rectangle(box, outline="red")
+    background.convert("RGB").save(overlay_io, quality=75)
+    overlay_arr = np.frombuffer(overlay_io.getvalue(), dtype="uint8")
+
+    return thumbnail_arr, mask_arr, overlay_arr
 
 
 def create_slide_image_dataset(
@@ -284,6 +249,7 @@ def tiling_pipeline(
     mask_path: Path,
     output_file: Path,
     dataset_cfg: DatasetConfigs,
+    quality: int,
     save_thumbnail: bool = False,
 ) -> None:
     try:
@@ -305,15 +271,17 @@ def tiling_pipeline(
             num_samples=len(dataset),
             is_binary=True,
         )
+        save_tiles(dataset, h5_writer, quality, quality)
+        if save_thumbnail:
+            thumbnail, mask, overlay = _save_thumbnail(image_path, dataset_cfg, mask)
+
+            h5_writer.add_associated_images(("thumbnail", thumbnail), ("mask", mask), ("overlay", overlay))
 
     except Exception as e:
         logger.error(f"Failed: {image_path} with exception {e}")
         return
 
     logger.debug("Working on %s. Writing to %s", image_path, output_file)
-
-    # if save_thumbnail:
-    #     _save_thumbnail(image_path, dataset_cfg, mask, h5_writer)
 
 
 def wrapper(dataset_cfg, save_dir_data, save_thumbnail, args):
@@ -418,8 +386,6 @@ def main():
     )
 
     logger.info(f"Dataset configurations: {pformat(dataset_cfg)}")
-
-    write_json(obj=dataset_cfg.dict(), path=save_dir_meta / "dataset_configs.json", indent=2)
 
     if args.num_workers > 0:
         # Convert list of tuples into list of lists
