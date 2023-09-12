@@ -52,6 +52,38 @@ class Image(Base):
     masks = relationship("Mask", back_populates="image")
     annotations = relationship("ImageAnnotations", back_populates="image")
     labels = relationship("ImageLabels", back_populates="image")
+    cache = relationship("ImageCache", uselist=False, back_populates="image")
+
+
+class ImageCache(Base):
+    __tablename__ = "image_cache"
+
+    id = Column(Integer, primary_key=True)
+    filename = Column(String, unique=True)
+    reader = Column(String)
+    num_tiles = Column(Integer)
+    image_id = Column(Integer, ForeignKey("image.id"))
+
+    image = relationship("Image", back_populates="cache")
+    description_id = Column(Integer, ForeignKey("cache_description.id"))
+    description = relationship("CacheDescription", back_populates="caches")
+
+
+class CacheDescription(Base):
+    __tablename__ = "cache_description"
+
+    id = Column(Integer, primary_key=True)
+    mpp = Column(Float)
+    tile_size_width = Column(Integer)
+    tile_size_height = Column(Integer)
+    tile_overlap_width = Column(Integer)
+    tile_overlap_height = Column(Integer)
+    tile_mode = Column(String)
+    crop = Column(Integer, default=False)  # using Integer for boolean for DB compatibility
+    mask_threshold = Column(Float)
+    grid_order = Column(String)
+
+    caches = relationship("ImageCache", back_populates="description")
 
 
 class Mask(Base):
