@@ -170,7 +170,7 @@ class H5FileImageWriter:
                     self._current_index += batch_size
 
         except Exception as e:
-            self._logger.error("Error in consumer thread for %s: %s", self._filename, exc_info=e)
+            self._logger.error("Error in consumer thread for %s: %s", self._filename, e, exc_info=e)
             if connection_to_parent:
                 connection_to_parent.send((False, self._filename, e))  # Send a message to the parent
         else:

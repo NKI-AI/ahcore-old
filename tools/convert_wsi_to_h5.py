@@ -249,7 +249,6 @@ def tiling_pipeline(
     quality: int,
     save_thumbnail: bool = False,
 ) -> None:
-
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -338,7 +337,7 @@ def main():
     parser.add_argument(
         "--simple-check",
         action="store_true",
-        help="Filter the list based on if the folders already exist.",
+        help="Filter the list based on if the h5 images already exist.",
     )
     parser.add_argument(
         "--quality",
@@ -353,7 +352,7 @@ def main():
     with open(args.file_list, "r") as file_list:
         for line in file_list:
             image_file, mask_file, output_filename = line.split(",")
-            if (args.output_directory / "data" / Path(output_filename.strip())).is_dir() and args.simple_check:
+            if (args.output_directory / "data" / Path(output_filename.strip())).is_file() and args.simple_check:
                 continue
             images_list.append(
                 (
