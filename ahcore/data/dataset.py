@@ -13,9 +13,10 @@ from pytorch_lightning.trainer.states import TrainerFn
 from torch.utils.data import DataLoader, Sampler
 
 import ahcore.data.samplers
-from ahcore.utils.data import DataDescription, create_inference_metadata, dataclass_to_uuid
+from ahcore.utils.data import DataDescription, dataclass_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import datasets_from_data_description
+from ahcore.utils.manifest_database import open_db
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -73,6 +74,8 @@ class DlupDataModule(pl.LightningDataModule):
         # Data settings
         self.data_description: DataDescription = data_description
 
+        self._db_session = open_db(data_description.manifest_database_path)
+
         self._batch_size = self.hparams.batch_size  # type: ignore
         self._validate_batch_size = self.hparams.validate_batch_size  # type: ignore
 
@@ -113,6 +116,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         def dataset_iterator() -> Iterator[Dataset]:
             gen = datasets_from_data_description(
+                self._db_session,
                 self.data_description,
                 self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
                 stage,
@@ -239,6 +243,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def teardown(self, stage: str | None = None) -> None:
         getattr(self, f"_{stage}_data_iterator").__del__()
+        self._db_session.close()
 
     @property
     def uuid(self) -> str:

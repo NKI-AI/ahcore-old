@@ -23,7 +23,7 @@ from pytorch_lightning.trainer.states import TrainerFn
 
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest_database import get_records_by_split, open_db
+from ahcore.utils.manifest_database import DataManager, open_db
 from ahcore.utils.rois import compute_rois
 
 logger = get_logger(__name__)
@@ -84,7 +84,7 @@ def _get_rois(mask, data_description: DataDescription, stage: str):
     return compute_rois(mask, tile_size=tile_size, tile_overlap=tile_overlap, centered=True)
 
 
-def datasets_from_data_description(data_description: DataDescription, transform, stage: str):
+def datasets_from_data_description(db_manager: DataManager, data_description: DataDescription, transform, stage: str):
     logger.info(
         f"Reading manifest from {data_description.manifest_database_path} for stage {stage} (type={type(stage)})"
     )
@@ -97,48 +97,46 @@ def datasets_from_data_description(data_description: DataDescription, transform,
     else:
         grid_description = data_description.inference_grid
 
-    with open_db(data_description.manifest_database_path) as session:
-        records = get_records_by_split(
-            session,
-            manifest_name=data_description.manifest_name,
-            split_version=data_description.split_version,
-            split_category=stage,
-        )
+    records = db_manager.get_records_by_split(
+        manifest_name=data_description.manifest_name,
+        split_version=data_description.split_version,
+        split_category=stage,
+    )
 
-        for record in records:
-            labels = [(label.key, label.value) for label in record.labels] if record.labels else None
+    for record in records:
+        labels = [(label.key, label.value) for label in record.labels] if record.labels else None
 
-            for image in record.images:
-                mask = _parse_annotations(annotations_root, image.masks)
-                annotations = _parse_annotations(annotations_root, image.annotations)
-                rois = _get_rois(mask, data_description, stage)
-                mask_threshold = 0.0 if stage != TrainerFn.FITTING else data_description.mask_threshold
+        for image in record.images:
+            mask = _parse_annotations(annotations_root, image.masks)
+            annotations = _parse_annotations(annotations_root, image.annotations)
+            rois = _get_rois(mask, data_description, stage)
+            mask_threshold = 0.0 if stage != TrainerFn.FITTING else data_description.mask_threshold
 
-                dataset = TiledROIsSlideImageDataset.from_standard_tiling(
-                    path=image_root / image.filename,
-                    mpp=grid_description.mpp,
-                    tile_size=grid_description.tile_size,
-                    tile_overlap=grid_description.tile_overlap,
-                    tile_mode=TilingMode.overflow,
-                    grid_order=GridOrder.C,
-                    crop=False,
-                    mask=mask,
-                    mask_threshold=mask_threshold,
-                    output_tile_size=getattr(grid_description, "output_tile_size", None),
-                    rois=rois,  # type: ignore
-                    annotations=annotations if stage != TrainerFn.PREDICTING else None,
-                    labels=labels,
-                    transform=transform,
-                    backend=ImageBackend[image.reader],
-                    overwrite_mpp=(image.mpp, image.mpp),
-                    limit_bounds=False if rois is not None else True,
-                )
+            dataset = TiledROIsSlideImageDataset.from_standard_tiling(
+                path=image_root / image.filename,
+                mpp=grid_description.mpp,
+                tile_size=grid_description.tile_size,
+                tile_overlap=grid_description.tile_overlap,
+                tile_mode=TilingMode.overflow,
+                grid_order=GridOrder.C,
+                crop=False,
+                mask=mask,
+                mask_threshold=mask_threshold,
+                output_tile_size=getattr(grid_description, "output_tile_size", None),
+                rois=rois,  # type: ignore
+                annotations=annotations if stage != TrainerFn.PREDICTING else None,
+                labels=labels,
+                transform=transform,
+                backend=ImageBackend[image.reader],
+                overwrite_mpp=(image.mpp, image.mpp),
+                limit_bounds=False if rois is not None else True,
+            )
 
-                logger.info(
-                    "Added dataset with length %s (filename=%s, original mpp=%s).",
-                    len(dataset),
-                    image.filename,
-                    image.mpp,
-                )
+            logger.info(
+                "Added dataset with length %s (filename=%s, original mpp=%s).",
+                len(dataset),
+                image.filename,
+                image.mpp,
+            )
 
-                yield dataset
+            yield dataset
