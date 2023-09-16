@@ -1,6 +1,7 @@
 # encoding: utf-8
 from pathlib import Path
-from typing import NamedTuple
+from types import TracebackType
+from typing import Generator, NamedTuple, Optional, Type
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,7 +9,10 @@ from sqlalchemy.orm import sessionmaker
 from ahcore.utils.database_models import Base, Image, Manifest, Patient, Split, SplitDefinitions
 from ahcore.utils.io import get_logger
 
-DATABASE_URL_TEMPLATE = "sqlite:///{filename}"
+
+# Custom exceptions
+class RecordNotFoundError(Exception):
+    pass
 
 
 class ImageMetadata(NamedTuple):
@@ -18,8 +22,8 @@ class ImageMetadata(NamedTuple):
     mpp: float
 
 
-def open_db(filename: Path):
-    engine = create_engine(DATABASE_URL_TEMPLATE.format(filename=filename))
+def open_db(database_uri: str):
+    engine = create_engine(database_uri)
     create_tables(engine)
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
@@ -44,36 +48,34 @@ def get_or_create_patient(session, patient_code, manifest):
 
 
 class DataManager:
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, database_uri: str) -> None:
+        self._database_uri = database_uri
+        self.__session = None
         self._logger = get_logger(type(self).__name__)
 
-    def get_records_by_split(self, manifest_name: str, split_version: str, split_category: str):
-        """
-        Gets the record given the manifest_name, split_version, and split category (e.g. fit, validate, test).
+    @property
+    def _session(self):
+        if self.__session is None:
+            self.__session = open_db(self._database_uri)
+        return self.__session
 
-        Parameters
-        ----------
-        manifest_name : str
-        split_version : str
-        split_category : str
+    @staticmethod
+    def _ensure_record(record: Type[Base], description: str) -> None:
+        """Raises an error if the record is None."""
+        if not record:
+            raise RecordNotFoundError(f"{description} not found.")
 
-        Returns
-        -------
+    def get_records_by_split(
+        self, manifest_name: str, split_version: str, split_category: str
+    ) -> Generator[Patient, None, None]:
+        manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
+        self._ensure_record(manifest, f"Manifest with name {manifest_name}")
 
-        """
+        split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()  # type: ignore
+        self._ensure_record(split_definition, f"Split definition with version {split_version}")
 
-        # First, we fetch the relevant manifest and split definition
-        manifest = self.session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
-        split_definition = self.session.query(SplitDefinitions).filter_by(version=split_version).first()  # type:ignore
-
-        # Ensure manifest and split_definition exists
-        if not manifest or not split_definition:
-            raise ValueError("Manifest or Split Definition not found")
-
-        # Fetch patients that belong to the manifest and have the desired split
         patients = (
-            self.session.query(Patient)  # type: ignore
+            self._session.query(Patient)  # type: ignore
             .join(Split)
             .filter(
                 Patient.manifest_id == manifest.id,
@@ -84,7 +86,6 @@ class DataManager:
         )
 
         self._logger.info(f"Found {len(patients)} patients for split {split_category}")
-
         for patient in patients:
             yield patient
 
@@ -107,9 +108,8 @@ class DataManager:
         list[ImageData]
             A list of metadata for all images associated with the patient.
         """
-        patient = self.session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
-        if not patient:
-            raise ValueError(f"Patient with code {patient_code} not found")
+        patient = self._session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
+        self._ensure_record(patient, f"Patient with code {patient_code} not found")
 
         return [self._fetch_image_metadata(image) for image in patient.images]
 
@@ -127,10 +127,8 @@ class DataManager:
         ImageMetadata
             Metadata of the image.
         """
-        image = self.session.query(Image).filter_by(filename=filename).first()  # type: ignore
-        if not image:
-            raise ValueError(f"No image found with filename {filename}")
-
+        image = self._session.query(Image).filter_by(filename=filename).first()
+        self._ensure_record(image, f"Image with filename {filename} not found")
         return self._fetch_image_metadata(image)
 
     def get_image_metadata_by_id(self, image_id: int) -> ImageMetadata:
@@ -147,8 +145,24 @@ class DataManager:
         ImageMetadata
             Metadata of the image.
         """
-        image = self.session.query(Image).filter_by(id=image_id).first()  # type: ignore
-        if not image:
-            raise ValueError(f"No image found with ID {image_id}")
-
+        image = self._session.query(Image).filter_by(id=image_id).first()
+        self._ensure_record(image, f"No image found with ID {image_id}")
         return self._fetch_image_metadata(image)
+
+    def __enter__(self) -> "DataManager":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        if self._session is not None:
+            self.close()
+        # By not returning anything (implicitly returning None), we're indicating that any exception should continue propagating
+
+    def close(self):
+        if self.__session is not None:
+            self.__session.close()
+            self.__session = None

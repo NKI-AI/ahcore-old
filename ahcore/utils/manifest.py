@@ -23,7 +23,7 @@ from pytorch_lightning.trainer.states import TrainerFn
 
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest_database import DataManager, open_db
+from ahcore.utils.manifest_database import DataManager
 from ahcore.utils.rois import compute_rois
 
 logger = get_logger(__name__)

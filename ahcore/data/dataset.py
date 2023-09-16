@@ -16,7 +16,7 @@ import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, dataclass_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import datasets_from_data_description
-from ahcore.utils.manifest_database import open_db
+from ahcore.utils.manifest_database import DataManager
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -74,7 +74,7 @@ class DlupDataModule(pl.LightningDataModule):
         # Data settings
         self.data_description: DataDescription = data_description
 
-        self._db_session = open_db(data_description.manifest_database_path)
+        self._data_manager = DataManager(database_uri=data_description.manifest_database_uri)
 
         self._batch_size = self.hparams.batch_size  # type: ignore
         self._validate_batch_size = self.hparams.validate_batch_size  # type: ignore
@@ -114,17 +114,19 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._logger.info("Constructing dataset iterator for stage %s", stage)
 
-        def dataset_iterator() -> Iterator[Dataset]:
-            gen = datasets_from_data_description(
-                self._db_session,
-                self.data_description,
-                self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
-                stage,
-            )
-            for dataset in gen:
-                yield dataset
+        with self._data_manager as manager:
 
-        setattr(self, f"_{stage}_data_iterator", dataset_iterator())
+            def dataset_iterator() -> Iterator[Dataset]:
+                gen = datasets_from_data_description(
+                    manager,
+                    self.data_description,
+                    self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
+                    stage,
+                )
+                for dataset in gen:
+                    yield dataset
+
+            setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
     def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn | None = None):
         if not data_iterator:
@@ -243,7 +245,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def teardown(self, stage: str | None = None) -> None:
         getattr(self, f"_{stage}_data_iterator").__del__()
-        self._db_session.close()
+        self._data_manager.close()
 
     @property
     def uuid(self) -> str:

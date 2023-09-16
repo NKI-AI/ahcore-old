@@ -1,7 +1,7 @@
 _target_: ahcore.utils.data.DataDescription
 data_dir: ${oc.env:DATA_DIR}
 annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230228_combined # specify in .env
-manifest_database_path: ${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230228_combined/manifest.db
+manifest_database_uri: sqlite:///${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230228_combined/manifest.db
 mask_label: roi
 mask_threshold: 0.1
 manifest_name: "v20230228"

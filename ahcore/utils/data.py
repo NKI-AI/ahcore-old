@@ -44,7 +44,7 @@ class DataDescription:
     num_classes: int
     data_dir: Path
     # TODO maybe this is just an env var?
-    manifest_database_path: Path
+    manifest_database_uri: str
     manifest_name: str
     split_version: str
 
