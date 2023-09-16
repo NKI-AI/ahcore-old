@@ -230,9 +230,7 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def on_validation_start(self) -> None:
-        assert hasattr(
-            self.trainer, "datamodule"
-        ), "Datamodule is not defined for the trainer. Required for validation"
+        assert hasattr(self.trainer, "datamodule"), "Datamodule is not defined for the trainer. Required for validation"
         datamodule: AhCoreLightningModule = cast(AhCoreLightningModule, getattr(self.trainer, "datamodule"))
         assert hasattr(datamodule, "val_concat_dataset"), "Validation dataset is not defined for the datamodule"
         self._validation_dataset = datamodule.val_concat_dataset

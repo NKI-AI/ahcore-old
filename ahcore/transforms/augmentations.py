@@ -90,13 +90,16 @@ class MeanStdNormalizer(nn.Module):
         return output
 
 
-class Identity(nn.Module):
+class Identity(K.AugmentationBase2D):
     """
     Identity transform.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, p: float = 1.0, p_batch: float = 1.0, same_on_batch: bool = True, keepdim: bool = True):
+        if p != 1.0 or p_batch != 1.0 or not same_on_batch:
+            raise ValueError("Identity is always applied. No probabilities can be applied.")
+
+        super().__init__(p, p_batch, same_on_batch, keepdim)
 
     def forward(self, *args: torch.Tensor, **kwargs):
         if len(args) == 1:
@@ -146,15 +149,19 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 
         References
         ----------
-        [1] Tellez, David, et al. "Whole-slide mitosis detection in H&E breast histology using PHH3 as a reference to train distilled stain-invariant convolutional networks." IEEE transactions on medical imaging 37.9 (2018): 2126-2136.
-        [2] Ruifrok AC, Johnston DA. Quantification of histochemical staining by color deconvolution. Anal Quant Cytol Histol. 2001 Aug;23(4):291-9. PMID: 11531144.
+        [1] Tellez, David, et al. "Whole-slide mitosis detection in H&E breast histology using PHH3 as
+            a reference to train distilled stain-invariant convolutional networks."
+            IEEE transactions on medical imaging 37.9 (2018): 2126-2136.
+        [2] Ruifrok AC, Johnston DA. Quantification of histochemical staining by color deconvolution.
+            Anal Quant Cytol Histol. 2001 Aug;23(4):291-9. PMID: 11531144.
         """
         super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         if (isinstance(scale_sigma, (list, ListConfig)) and len(scale_sigma) != 3) or (
             isinstance(bias_sigma, (list, ListConfig)) and len(bias_sigma) != 3
         ):
             raise ValueError(
-                f"scale_sigma and bias_sigma should have either 1 or 3 values, got {scale_sigma} and {bias_sigma} instead."
+                f"scale_sigma and bias_sigma should have either 1 or 3 values, "
+                f"got {scale_sigma} and {bias_sigma} instead."
             )
 
         if isinstance(scale_sigma, float):

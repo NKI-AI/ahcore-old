@@ -291,7 +291,7 @@ def parse_args_split(args):
         split_test = split[2]
 
     if not split_train + split_test + split_val == 100:
-        raise argparse.ArgumentTypeError(f"Split must add up to 100.")
+        raise argparse.ArgumentTypeError("Split must add up to 100.")
 
     return split_train, split_test, split_val
 
@@ -314,9 +314,7 @@ def train_test_split(args: argparse.Namespace):
 
     output = {}
     if args.dataset_statistics is None:
-        train_ids, val_ids, test_ids = compute_train_test_split(
-            _data_ids, split_train, split_val, shuffle=args.shuffle
-        )
+        train_ids, val_ids, test_ids = compute_train_test_split(_data_ids, split_train, split_val, shuffle=args.shuffle)
 
     else:
         with open(args.dataset_statistics, "r") as json_file:

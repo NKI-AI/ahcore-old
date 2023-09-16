@@ -28,7 +28,7 @@ class AhCoreMetric:
 
 class DiceMetric(AhCoreMetric):
     def __init__(self, data_description: DataDescription) -> None:
-        """
+        r"""
         Metric computing dice over classes. The classes are derived from the index_map that's defined in the
         data_description.
 
@@ -81,8 +81,8 @@ class DiceMetric(AhCoreMetric):
 
 
 class MetricFactory:
-    """Factory to create the metrics. These are fixed for the different tasks (e.g., segmentation, detection, whole-slide-level
-    classification.
+    """Factory to create the metrics. These are fixed for the different tasks
+    (e.g., segmentation, detection, whole-slide-level classification.
     """
 
     def __init__(self, metrics: list[AhCoreMetric]) -> None:

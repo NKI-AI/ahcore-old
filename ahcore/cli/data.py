@@ -67,7 +67,8 @@ def register_parser(parser: argparse._SubParsersAction):
 
     _parser: argparse.ArgumentParser = data_subparsers.add_parser(
         "copy-data-from-manifest",
-        help="Copy the data to a different drive based on the manifest. The data will be copied over to $SCRATCH / DATASET_NAME",
+        help="Copy the data to a different drive based on the manifest. "
+             "The data will be copied over to $SCRATCH / DATASET_NAME",
     )
 
     _parser.add_argument(

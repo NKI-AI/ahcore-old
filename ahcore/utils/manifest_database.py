@@ -71,7 +71,7 @@ class DataManager:
         manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
         self._ensure_record(manifest, f"Manifest with name {manifest_name}")
 
-        split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()  # type: ignore
+        split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()
         self._ensure_record(split_definition, f"Split definition with version {split_version}")
 
         patients = (
@@ -129,6 +129,7 @@ class DataManager:
         """
         image = self._session.query(Image).filter_by(filename=filename).first()
         self._ensure_record(image, f"Image with filename {filename} not found")
+        assert image
         return self._fetch_image_metadata(image)
 
     def get_image_metadata_by_id(self, image_id: int) -> ImageMetadata:
@@ -160,7 +161,6 @@ class DataManager:
     ) -> Optional[bool]:
         if self._session is not None:
             self.close()
-        # By not returning anything (implicitly returning None), we're indicating that any exception should continue propagating
 
     def close(self):
         if self.__session is not None:

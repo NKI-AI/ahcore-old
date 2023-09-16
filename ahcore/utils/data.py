@@ -6,9 +6,7 @@ import hashlib
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, TypedDict
-
-from dlup.data.dataset import TiledROIsSlideImageDataset
+from typing import Optional
 
 
 def dataclass_to_uuid(data_class) -> str:

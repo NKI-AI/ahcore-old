@@ -4,4 +4,5 @@ __all__ = [
     "AhCoreMetric",
     "DiceMetric",
     "MetricFactory",
+    "WSIMetricFactory",
 ]

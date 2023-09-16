@@ -2,7 +2,7 @@
 import json
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Generator, Optional
 
 import h5py
 import numpy as np

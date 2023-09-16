@@ -184,27 +184,28 @@ class DlupDataModule(pl.LightningDataModule):
     def _construct_dataloader_iterator(
         self, data_iterator, batch_size: int
     ) -> Iterator[tuple[dict[str, Any], DataLoader]] | None:
-        if not data_iterator:
-            return None
+        # if not data_iterator:
+        #     return None
+        #
+        # test_description = self.data_description.inference_grid
+        # # TODO: This should be somewhere where we validate the configuration
+        # if (
+        #     test_description.output_tile_size is not None
+        #     and test_description.output_tile_size != test_description.tile_size
+        # ):
+        #     raise ValueError(f"`output_tile_size should be equal to tile_size in inference or set to None.")
+        #
+        # for dataset in data_iterator:
+        #     metadata = create_inference_metadata(dataset, test_description.mpp, test_description.tile_size)
+        #     dataloader = DataLoader(
+        #         dataset,
+        #         batch_size=batch_size,
+        #         num_workers=self._num_workers,
+        #         pin_memory=self._pin_memory,
+        #     )
+        yield None, None
 
-        test_description = self.data_description.inference_grid
-        # TODO: This should be somewhere where we validate the configuration
-        if (
-            test_description.output_tile_size is not None
-            and test_description.output_tile_size != test_description.tile_size
-        ):
-            raise ValueError(f"`output_tile_size should be equal to tile_size in inference or set to None.")
-
-        for dataset in data_iterator:
-            metadata = create_inference_metadata(dataset, test_description.mpp, test_description.tile_size)
-            dataloader = DataLoader(
-                dataset,
-                batch_size=batch_size,
-                num_workers=self._num_workers,
-                pin_memory=self._pin_memory,
-            )
-
-            yield metadata, dataloader
+        # yield metadata, dataloader
 
     def train_dataloader(self):
         if not self._fit_data_iterator:
@@ -225,7 +226,7 @@ class DlupDataModule(pl.LightningDataModule):
             batch_size=batch_size,
             stage=TrainerFn.VALIDATING,
         )
-        setattr(self, f"val_concat_dataset", val_dataloader.dataset)
+        setattr(self, "val_concat_dataset", val_dataloader.dataset)
         return val_dataloader
 
     def test_dataloader(self):

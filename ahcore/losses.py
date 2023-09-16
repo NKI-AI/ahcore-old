@@ -151,7 +151,7 @@ def soft_dice(
     ignore_index: int | None = None,
     eps: float = 1e-17,
 ) -> torch.Tensor:
-    """Criterion that computes Sørensen-Dice Coefficient loss.
+    r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
 

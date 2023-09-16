@@ -109,7 +109,8 @@ class ExtractFeaturesHook:
         value : Optional[BaseException]
             The instance of exception that caused the context to be exited, if any.
         traceback : Optional[Any]
-            A traceback object encapsulating the call stack at the point where the exception originally occurred, if any.
+            A traceback object encapsulating the call stack at the point where the exception originally occurred,
+            if any.
         """
         for hook in self.hooks:
             hook.remove()

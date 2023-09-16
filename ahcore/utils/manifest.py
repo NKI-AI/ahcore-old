@@ -9,7 +9,6 @@ TODO: Definitely imporove the logging here.
 from __future__ import annotations
 
 import functools
-import warnings
 from enum import Enum
 from pathlib import Path
 from typing import Callable, TypedDict

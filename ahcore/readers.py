@@ -7,11 +7,11 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import map_coordinates
+from typing import Optional
 
 from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
-from typing import Optional
 
 
 class StitchingMode(Enum):
@@ -151,7 +151,7 @@ class H5FileImageReader:
         raw_region = self.read_region_raw(original_location, original_size)
 
         # Determine the fractional start and end coordinates for mapping
-        fractional_start = tuple(map(lambda l, ol: (l / scaling) - ol + order, location, original_location))
+        fractional_start = tuple(map(lambda _, ol: (_ / scaling) - ol + order, location, original_location))
         fractional_end = tuple(fs + size[i] / scaling for i, fs in enumerate(fractional_start))
 
         # Create an array of coordinates for map_coordinates
