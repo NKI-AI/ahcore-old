@@ -1,7 +1,7 @@
 # encoding: utf-8
 from pathlib import Path
 from types import TracebackType
-from typing import Generator, NamedTuple, Optional, Type
+from typing import Generator, NamedTuple, Optional, Type, Literal
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -92,7 +92,7 @@ class DataManager:
     @staticmethod
     def _fetch_image_metadata(image: Image) -> ImageMetadata:
         """Extract metadata from an Image object."""
-        return ImageMetadata(filename=Path(image.filename), height=image.height, width=image.width, mpp=image.mpp)
+        return ImageMetadata(filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp))
 
     def get_image_metadata_by_patient(self, patient_code: str) -> list[ImageMetadata]:
         """
@@ -158,9 +158,10 @@ class DataManager:
         exc_type: Optional[Type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
-    ) -> Optional[bool]:
+    ) -> Literal[False]:
         if self._session is not None:
             self.close()
+        return False
 
     def close(self):
         if self.__session is not None:

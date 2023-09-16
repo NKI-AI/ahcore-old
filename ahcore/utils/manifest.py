@@ -85,7 +85,7 @@ def _get_rois(mask, data_description: DataDescription, stage: str):
 
 def datasets_from_data_description(db_manager: DataManager, data_description: DataDescription, transform, stage: str):
     logger.info(
-        f"Reading manifest from {data_description.manifest_database_path} for stage {stage} (type={type(stage)})"
+        f"Reading manifest from {data_description.manifest_database_uri} for stage {stage} (type={type(stage)})"
     )
 
     image_root = data_description.data_dir

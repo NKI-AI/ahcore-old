@@ -108,7 +108,7 @@ def binary_mask_to_polygon(mask: np.ndarray, label: str | None = None) -> list[P
     geometries = []
     contours, hierarchy = cv2.findContours(mask.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     # TODO: This can be done easier
-    contours = map(np.squeeze, contours)
+    contours = list(map(np.squeeze, contours))
     for contour in contours:
         if len(contour) < 3:
             continue

@@ -6,6 +6,7 @@ from enum import Enum
 import h5py
 import numpy as np
 import numpy.typing as npt
+from pathlib import Path
 from scipy.ndimage import map_coordinates
 from typing import Optional
 
@@ -48,7 +49,7 @@ def paste_region(array, region, location, paste_mode=PasteMode.OVERWRITE):
 
 
 class H5FileImageReader:
-    def __init__(self, filename, stitching_mode):
+    def __init__(self, filename: Path, stitching_mode: StitchingMode) -> None:
         self._filename = filename
         self._stitching_mode = stitching_mode
 
@@ -70,13 +71,22 @@ class H5FileImageReader:
 
     @property
     def size(self) -> tuple[int, int]:
+        if not self._size:
+            self._open_file()
+            assert self._size
         return self._size
 
     @property
     def mpp(self) -> float:
+        if not self._mpp:
+            self._open_file()
+            assert self._mpp
         return self._mpp
 
     def get_mpp(self, scaling: Optional[float]) -> float:
+        if not self._mpp:
+            self._open_file()
+            assert self._mpp
         if scaling is None:
             return self.mpp
 
@@ -84,6 +94,9 @@ class H5FileImageReader:
 
     def get_scaling(self, mpp: Optional[float]) -> float:
         """Inverse of get_mpp()."""
+        if not self._mpp:
+            self._open_file()
+            assert self._mpp
         if not mpp:
             return 1.0
         return self._mpp / mpp
@@ -192,6 +205,8 @@ class H5FileImageReader:
         if self._h5file is None:
             self._open_file()
         assert self._h5file, "File is not open. Should not happen"
+        assert self._tile_size
+        assert self._tile_overlap
 
         image_dataset = self._h5file["data"]
         num_tiles = self._metadata["num_tiles"]
