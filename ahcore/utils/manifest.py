@@ -84,9 +84,7 @@ def _get_rois(mask, data_description: DataDescription, stage: str):
 
 
 def datasets_from_data_description(db_manager: DataManager, data_description: DataDescription, transform, stage: str):
-    logger.info(
-        f"Reading manifest from {data_description.manifest_database_uri} for stage {stage} (type={type(stage)})"
-    )
+    logger.info(f"Reading manifest from {data_description.manifest_database_uri} for stage {stage}")
 
     image_root = data_description.data_dir
     annotations_root = data_description.annotations_dir
@@ -129,13 +127,6 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
                 backend=ImageBackend[image.reader],
                 overwrite_mpp=(image.mpp, image.mpp),
                 limit_bounds=False if rois is not None else True,
-            )
-
-            logger.info(
-                "Added dataset with length %s (filename=%s, original mpp=%s).",
-                len(dataset),
-                image.filename,
-                image.mpp,
             )
 
             yield dataset

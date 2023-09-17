@@ -2,13 +2,13 @@
 import json
 import math
 from enum import Enum
+from pathlib import Path
+from typing import Optional
 
 import h5py
 import numpy as np
 import numpy.typing as npt
-from pathlib import Path
 from scipy.ndimage import map_coordinates
-from typing import Optional
 
 from ahcore.utils.io import get_logger
 

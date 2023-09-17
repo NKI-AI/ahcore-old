@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterator, Optional
 
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from dlup.data.dataset import ConcatDataset, Dataset
@@ -17,6 +18,17 @@ from ahcore.utils.data import DataDescription, dataclass_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import datasets_from_data_description
 from ahcore.utils.manifest_database import DataManager
+
+
+def hello(params=None):
+    if params:
+        print("Hello", params)
+    else:
+        print("Hello")
+
+    import sys
+
+    sys.exit()
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -109,24 +121,25 @@ class DlupDataModule(pl.LightningDataModule):
         if not stage:
             return
 
+        if stage not in (e.value for e in TrainerFn):  # type: ignore
+            raise ValueError(f"Stage should be one of {TrainerFn}")
+
         if stage and self._already_called[stage]:
             return
 
         self._logger.info("Constructing dataset iterator for stage %s", stage)
 
-        with self._data_manager as manager:
+        def dataset_iterator() -> Iterator[Dataset]:
+            gen = datasets_from_data_description(
+                db_manager=self._data_manager,
+                data_description=self.data_description,
+                transform=self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
+                stage=stage,
+            )
+            for dataset in gen:
+                yield dataset
 
-            def dataset_iterator() -> Iterator[Dataset]:
-                gen = datasets_from_data_description(
-                    manager,
-                    self.data_description,
-                    self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
-                    stage,
-                )
-                for dataset in gen:
-                    yield dataset
-
-            setattr(self, f"_{stage}_data_iterator", dataset_iterator())
+        setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
     def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn | None = None):
         if not data_iterator:
@@ -139,6 +152,15 @@ class DlupDataModule(pl.LightningDataModule):
             return ConcatDataset(datasets)
 
         dataset = self._load_from_cache(construct_dataset, stage=stage)
+
+        lengths = np.asarray([len(ds) for ds in dataset.datasets])
+        self._logger.info(
+            f"Dataset for stage {stage} has {len(dataset)} samples and the following statistics:\n"
+            f" - Mean: {lengths.mean():.2f}\n"
+            f" - Std: {lengths.std():.2f}\n"
+            f" - Min: {lengths.min():.2f}\n"
+            f" - Max: {lengths.max():.2f}"
+        )
 
         batch_sampler: Sampler
         if stage == TrainerFn.FITTING:
@@ -209,7 +231,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if not self._fit_data_iterator:
-            self.setup(TrainerFn.FITTING)
+            self.setup("fit")
         return self._construct_concatenated_dataloader(
             self._fit_data_iterator,
             batch_size=self._batch_size,
@@ -218,7 +240,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         if not self._validate_data_iterator:
-            self.setup(TrainerFn.VALIDATING)
+            self.setup("validate")
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         val_dataloader = self._construct_concatenated_dataloader(

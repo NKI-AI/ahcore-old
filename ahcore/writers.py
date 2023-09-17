@@ -115,7 +115,9 @@ class H5FileImageWriter:
         metadata_json = json.dumps(metadata)
         h5file.attrs["metadata"] = metadata_json
 
-    def add_associated_images(self, images: tuple[tuple[str, npt.NDArray[np.uint8]]], description: Optional[str] = None):
+    def add_associated_images(
+        self, images: tuple[tuple[str, npt.NDArray[np.uint8]]], description: Optional[str] = None
+    ):
         """Adds associated images to the h5 file."""
 
         # Create a compound dataset "associated_images"

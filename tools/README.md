@@ -7,4 +7,4 @@ Combine with `detect_problems.py` to detect images which were not correctly pars
 Process for v1 is:
 - run `convert_wsi_to_tiles.py` on all *diagnostic* slides
 - run detect_problems.py on the output and remove cases with `parsing` error
-- 
+-

@@ -351,6 +351,8 @@ def main():
 
     with open(args.file_list, "r") as file_list:
         for line in file_list:
+            if line.startswith("#"):
+                continue
             image_file, mask_file, output_filename = line.split(",")
             if (args.output_directory / "data" / Path(output_filename.strip())).is_file() and args.simple_check:
                 continue

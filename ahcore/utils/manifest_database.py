@@ -1,7 +1,7 @@
 # encoding: utf-8
 from pathlib import Path
 from types import TracebackType
-from typing import Generator, NamedTuple, Optional, Type, Literal
+from typing import Generator, Literal, NamedTuple, Optional, Type
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -92,7 +92,9 @@ class DataManager:
     @staticmethod
     def _fetch_image_metadata(image: Image) -> ImageMetadata:
         """Extract metadata from an Image object."""
-        return ImageMetadata(filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp))
+        return ImageMetadata(
+            filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp)
+        )
 
     def get_image_metadata_by_patient(self, patient_code: str) -> list[ImageMetadata]:
         """
