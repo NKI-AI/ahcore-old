@@ -20,17 +20,6 @@ from ahcore.utils.manifest import datasets_from_data_description
 from ahcore.utils.manifest_database import DataManager
 
 
-def hello(params=None):
-    if params:
-        print("Hello", params)
-    else:
-        print("Hello")
-
-    import sys
-
-    sys.exit()
-
-
 class DlupDataModule(pl.LightningDataModule):
     """Datamodule for the Ahcore framework. This datamodule is based on `dlup`."""
 
@@ -116,6 +105,10 @@ class DlupDataModule(pl.LightningDataModule):
             "predict": False,
         }
         self._num_classes = data_description.num_classes
+
+    @property
+    def data_manager(self) -> DataManager:
+        return self._data_manager
 
     def setup(self, stage: Optional[str] = None) -> None:
         if not stage:

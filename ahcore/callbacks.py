@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import concurrent.futures
 import hashlib
+import itertools
 import json
 import logging
-from multiprocessing import Pipe, Pool, Process, Queue, Semaphore
+import multiprocessing
+import time
+from multiprocessing import Pipe, Process, Queue, Semaphore
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any, Iterator, Optional, TypedDict, cast
+from typing import Any, Generator, Iterator, Optional, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -24,10 +26,13 @@ from pytorch_lightning.callbacks import Callback
 from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
+from ahcore.lit_module import AhCoreLightningModule
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.data import DataDescription, GridDescription
 from ahcore.utils.io import get_logger
+from ahcore.utils.manifest import get_mask_and_annotations_from_record
+from ahcore.utils.manifest_database import DataManager, ImageMetadata, fetch_image_metadata
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
@@ -244,7 +249,7 @@ def _get_uuid_for_filename(input_path: Path) -> str:
     return hex_dig
 
 
-def _get_output_filename(dump_dir: Path, input_path: Path, model_name: str, step: None | int | str = None) -> Path:
+def _get_h5_output_filename(dump_dir: Path, input_path: Path, model_name: str, step: None | int | str = None) -> Path:
     hex_dig = _get_uuid_for_filename(input_path=input_path)
 
     # Return the hashed filename with the new extension
@@ -350,7 +355,7 @@ class WriteH5Callback(Callback):
             )
 
         if filename != self._current_filename:
-            output_filename = _get_output_filename(
+            output_filename = _get_h5_output_filename(
                 self.dump_dir,
                 filename,
                 model_name=str(pl_module.name),
@@ -471,7 +476,7 @@ def tile_process_function(x):
 
 class WriteTiffCallback(Callback):
     def __init__(self, max_concurrent_writers: int):
-        self._pool = Pool(max_concurrent_writers)
+        self._pool = multiprocessing.Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
         self._dump_dir: Optional[Path] = None
         self.__write_h5_callback_index = -1
@@ -520,7 +525,7 @@ class WriteTiffCallback(Callback):
 
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
         if filename not in self._filenames:
-            output_filename = _get_output_filename(
+            output_filename = _get_h5_output_filename(
                 dump_dir=self.dump_dir,
                 input_path=filename,
                 model_name=str(pl_module.name),
@@ -561,177 +566,221 @@ class WriteTiffCallback(Callback):
         self._filenames = {}  # Reset the filenames
 
 
-# class ComputeWsiMetricsCallback(Callback):
-#     def __init__(self, max_threads=10, save_per_image: bool = True):
-#         """
-#         Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
-#         images in separate threads.
-#
-#         Parameters
-#         ----------
-#         max_threads : int
-#             The maximum number of concurrent threads.
-#         """
-#         self._data_description = None
-#         self._reader = H5FileImageReader
-#         self._dump_dir = None
-#         self._save_per_image = save_per_image
-#         self._filenames: dict[Path, Path] = {}
-#         self._logger = get_logger(type(self).__name__)
-#         self._semaphore = Semaphore(max_threads)  # Limit the number of threads
-#
-#         self._wsi_metrics = None
-#
-#         self._dump_list: list[dict[str, str]] = []
-#
-#     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
-#         _callback: Optional[WriteH5Callback] = None
-#         for idx, callback in enumerate(trainer.callbacks):
-#             if isinstance(callback, WriteH5Callback):
-#                 _callback = cast(WriteH5Callback, trainer.callbacks[idx])
-#                 break
-#
-#         if _callback is None:
-#             raise ValueError(
-#                 "WriteH5Callback is not in the trainer's callbacks. "
-#                 "This is required before WSI metrics can be computed using this Callback"
-#             )
-#
-#         self._dump_dir = _callback.dump_dir
-#
-#         self._wsi_metrics = pl_module.wsi_metrics
-#         self._data_description = trainer.datamodule.data_description  # type: ignore
-#
-#         if not self._data_description:
-#             raise ValueError("Data description is not set.")
-#
-#         self._class_names = dict([(v, k) for k, v in self._data_description.index_map.items()])
-#         self._class_names[0] = "background"
-#
-#         # We should also attach the validation manifest to the class, but convert it to a dictionary mapping
-#         # the UUID
-#         data_dir = self._data_description.data_dir
-#         for manifest in trainer.datamodule.val_manifest:
-#             image_fn = data_dir / manifest.image[0]
-#             self._validation_manifests[_get_uuid_for_filename(image_fn)] = manifest
-#
-#         self._logger.info("Added %s images to validation manifest.", len(self._validation_manifests))
-#
-#     @property
-#     def metrics(self):
-#         return self._metrics
-#
-#     def on_validation_batch_end(
-#         self,
-#         trainer: pl.Trainer,
-#         pl_module: pl.LightningModule,
-#         outputs,
-#         batch,
-#         batch_idx,
-#         dataloader_idx=0,
-#     ):
-#         if not self._dump_dir:
-#             raise ValueError("Dump directory is not set.")
-#
-#         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
-#         if filename not in self._filenames:
-#             output_filename = _get_output_filename(
-#                 dump_dir=self._dump_dir,
-#                 input_path=filename,
-#                 model_name=pl_module.name,
-#                 step=pl_module.global_step,
-#             )
-#             self._logger.debug("%s -> %s", filename, output_filename)
-#             self._filenames[output_filename] = filename
-#
-#     def compute_metrics(self):
-#         metrics = []
-#         with concurrent.futures.ThreadPoolExecutor() as executor:
-#             future_to_filename = {
-#                 executor.submit(self.compute_metrics_for_case, filename): filename for filename in self._filenames
-#             }
-#
-#             for future in concurrent.futures.as_completed(future_to_filename):
-#                 filename = future_to_filename[future]
-#                 try:
-#                     metric = future.result()
-#                 except Exception as exc:
-#                     self._logger.error("%r generated an exception: %s" % (filename, exc))
-#                 else:
-#                     metrics.append(metric)
-#                     self._logger.debug("Metric for %r is %s" % (filename, metric))
-#         return metrics
-#
-#     def compute_metrics_for_case(self, filename):
-#         wsi_filename = self._filenames[filename]
-#         validation_manifest = self._validation_manifests[_get_uuid_for_filename(wsi_filename)]
-#         native_mpp = validation_manifest.mpp
-#         with self._semaphore:  # Only allow a certain number of threads to compute metrics concurrently
-#             # Compute the metric for one filename here...
-#             with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5reader:
-#                 mask = _parse_annotations(
-#                     validation_manifest.mask,
-#                     base_dir=self._data_description.annotations_dir,
-#                 )
-#                 annotations = _parse_annotations(
-#                     validation_manifest.annotations,
-#                     base_dir=self._data_description.annotations_dir,
-#                 )
-#                 dataset_of_validation_image = _ValidationDataset(
-#                     data_description=self._data_description,
-#                     native_mpp=native_mpp,
-#                     mask=mask,
-#                     annotations=annotations,
-#                     reader=h5reader,
-#                 )
-#                 for sample in dataset_of_validation_image:
-#                     prediction = torch.from_numpy(sample["prediction"]).unsqueeze(0).float()
-#                     target = torch.from_numpy(sample["target"]).unsqueeze(0)
-#                     roi = torch.from_numpy(sample["roi"]).unsqueeze(0)
-#
-#                     self._wsi_metrics.process_batch(
-#                         predictions=prediction,
-#                         target=target,
-#                         roi=roi,
-#                         wsi_name=str(filename),
-#                     )
-#         if self._save_per_image is True:
-#             wsi_metrics_dictionary = {
-#                 "image_fn": str(wsi_filename),
-#                 "uuid": filename.stem,
-#             }
-#             if filename.with_suffix(".tiff").is_file():
-#                 wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
-#             if filename.is_file():
-#                 wsi_metrics_dictionary["h5_fn"] = str(filename)
-#             for metric in self._wsi_metrics._metrics:
-#                 metric.get_wsi_score(str(filename))
-#                 wsi_metrics_dictionary[metric.name] = {
-#                     self._class_names[class_idx]: metric.wsis[str(filename)][class_idx][metric.name].item()
-#                     for class_idx in range(self._data_description.num_classes)
-#                 }
-#             self._dump_list.append(wsi_metrics_dictionary)
-#
-#     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-#         if not self._dump_dir:
-#             raise ValueError("Dump directory is not set.")
-#         if not self._wsi_metrics:
-#             raise ValueError("WSI metrics are not set.")
-#
-#         # Ensure that all h5 files have been written
-#         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
-#         self.compute_metrics()
-#         metrics = self._wsi_metrics.get_average_score()
-#         with open(
-#             self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
-#             "w",
-#             encoding="utf-8",
-#         ) as json_file:
-#             json.dump(self._dump_list, json_file, indent=2)
-#         self._wsi_metrics.reset()
-#         # Reset stuff
-#         self._dump_list = []
-#         self._filenames = {}
-#
-#         self._logger.debug("Metrics: %s", metrics)
-#         pl_module.log_dict(metrics, prog_bar=True)
+class ComputeWsiMetricsCallback(Callback):
+    def __init__(self, max_processes=10, save_per_image: bool = True):
+        """
+        Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
+        images in separate processes.
+
+        Parameters
+        ----------
+        max_processes : int
+            The maximum number of concurrent processes.
+        """
+        self._data_description: Optional[DataDescription] = None
+        self._reader = H5FileImageReader
+        self._max_processes: int = max_processes
+        self._dump_dir: Optional[Path] = None
+        self._save_per_image = save_per_image
+        self._filenames: dict[Path, Path] = {}
+
+        self._wsi_metrics = None
+        self._class_names: dict[int, str] = {}
+        self._data_manager = None
+        self._validate_filenames_gen = None
+
+        self._dump_list: list[dict[str, str]] = []
+        self._logger = get_logger(type(self).__name__)
+
+    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
+        assert self._data_description
+        index_map = self._data_description.index_map
+        assert index_map
+        pl_module = cast(AhCoreLightningModule, pl_module)
+
+        _callback: Optional[WriteH5Callback] = None
+        for idx, callback in enumerate(trainer.callbacks):  # type: ignore
+            if isinstance(callback, WriteH5Callback):
+                _callback = cast(WriteH5Callback, trainer.callbacks[idx])  # type: ignore
+                break
+
+        if _callback is None:
+            raise ValueError(
+                "WriteH5Callback is not in the trainer's callbacks. "
+                "This is required before WSI metrics can be computed using this Callback"
+            )
+
+        self._dump_dir = _callback.dump_dir
+
+        self._wsi_metrics = pl_module.wsi_metrics
+        self._data_description = trainer.datamodule.data_description  # type: ignore
+
+        if not self._data_description:
+            raise ValueError("Data description is not set.")
+
+        self._class_names = dict([(v, k) for k, v in index_map.items()])
+        self._class_names[0] = "background"
+
+        # Here we can query the database for the validation images
+        self._data_manager: DataManager = trainer.datamodule.data_manager  # type: ignore
+        # Initialize the generator here
+
+        self._validate_metadata_gen = self._create_validate_image_metadata_gen()
+
+    def _create_validate_image_metadata_gen(self) -> Generator[ImageMetadata, None, None]:
+        assert self._data_description
+        assert self._data_manager
+        gen = self._data_manager.get_image_metadata_by_split(
+            manifest_name=self._data_description.manifest_name,
+            split_version=self._data_description.split_version,
+            split_category="validate",
+        )
+        for image_metadata in gen:
+            yield image_metadata
+
+    @property
+    def _validate_metadata(self) -> Generator[ImageMetadata, None, None]:
+        return self._validate_metadata_gen
+
+    @property
+    def metrics(self):
+        return self._metrics
+
+    def on_validation_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx=0,
+    ):
+        if not self._dump_dir:
+            raise ValueError("Dump directory is not set.")
+
+        filenames = batch["path"]  # Filenames are constant across the batch.
+        if not len(set(filenames)) != 1:
+            raise ValueError(
+                "All paths in a batch must be the same. "
+                "Either use batch_size=1 or ahcore.data.samplers.WsiBatchSampler."
+            )
+
+    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        assert self._dump_dir
+        assert self._data_description
+        data_dir = self._data_description.data_dir
+        metrics = []
+
+        with multiprocessing.Pool(processes=self._max_processes) as pool:
+            results_to_filename = {}
+            completed_tasks = 0
+
+            # Fill up the initial task pool
+            for image_metadata in itertools.islice(self._validate_metadata, self._max_processes):
+                filename = image_metadata.filename
+                h5_filename = _get_h5_output_filename(
+                    dump_dir=self._dump_dir,
+                    input_path=data_dir / filename,
+                    model_name=str(pl_module.name),
+                    step=pl_module.global_step,
+                )
+
+                # We need the full filename here so
+                result = pool.apply_async(self.compute_metrics_for_case, args=(filename, h5_filename))
+                results_to_filename[result] = filename
+
+            while results_to_filename:
+                time.sleep(0.1)  # Reduce excessive polling
+                # Check for completed tasks
+                for result in list(results_to_filename.keys()):
+                    if result.ready():
+                        filename = results_to_filename.pop(result)
+                        try:
+                            metric = result.get()
+                        except Exception as exc:
+                            self._logger.error("%r generated an exception: %s" % (filename, exc))
+                        else:
+                            metrics.append(metric)
+                            self._logger.debug("Metric for %r is %s" % (filename, metric))
+
+                        completed_tasks += 1
+
+                        # Schedule a new task if there are more filenames left in the generator
+                        next_metadata = next(self._validate_metadata, None)
+                        next_filename = next_metadata.filename if next_metadata else None
+                        if next_filename:
+                            new_result = pool.apply_async(self.compute_metrics_for_case, args=(next_filename,))
+                            results_to_filename[new_result] = next_filename
+
+        return metrics
+
+    def compute_metrics_for_case(self, filename: Path, h5_filename: Path):
+        # for mypy
+        assert self._class_names
+        assert self._data_description
+        assert self._wsi_metrics
+        # Given the filename we can request all the annotations and everything else.
+        # We can then compute the metrics for this case.
+        image = self._data_manager.get_image_by_filename(str(filename))
+        metadata = fetch_image_metadata(image)
+
+        with H5FileImageReader(h5_filename, stitching_mode=StitchingMode.CROP) as h5reader:
+            mask, annotations = get_mask_and_annotations_from_record(self._data_description.annotation_dir, image)
+            dataset_of_validation_image = _ValidationDataset(
+                data_description=self._data_description,
+                native_mpp=metadata.mpp,
+                mask=mask,
+                annotations=annotations,
+                reader=h5reader,
+            )
+            for sample in dataset_of_validation_image:
+                prediction = torch.from_numpy(sample["prediction"]).unsqueeze(0).float()
+                target = torch.from_numpy(sample["target"]).unsqueeze(0)
+                roi = torch.from_numpy(sample["roi"]).unsqueeze(0)
+
+                self._wsi_metrics.process_batch(
+                    predictions=prediction,
+                    target=target,
+                    roi=roi,
+                    wsi_name=str(filename),
+                )
+        if self._save_per_image is True:
+            wsi_metrics_dictionary = {
+                "image_fn": str(self._data_description.data_dir / metadata.filename),
+                "uuid": filename.stem,
+            }
+            if filename.with_suffix(".tiff").is_file():
+                wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
+            if filename.is_file():
+                wsi_metrics_dictionary["h5_fn"] = str(filename)
+            for metric in self._wsi_metrics._metrics:
+                metric.get_wsi_score(str(filename))
+                wsi_metrics_dictionary[metric.name] = {
+                    self._class_names[class_idx]: metric.wsis[str(filename)][class_idx][metric.name].item()
+                    for class_idx in range(self._data_description.num_classes)
+                }
+            self._dump_list.append(wsi_metrics_dictionary)
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        if not self._dump_dir:
+            raise ValueError("Dump directory is not set.")
+        if not self._wsi_metrics:
+            raise ValueError("WSI metrics are not set.")
+
+        # Ensure that all h5 files have been written
+        self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
+        self.compute_metrics(trainer, pl_module)
+        metrics = self._wsi_metrics.get_average_score()
+        with open(
+            self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
+            "w",
+            encoding="utf-8",
+        ) as json_file:
+            json.dump(self._dump_list, json_file, indent=2)
+        self._wsi_metrics.reset()
+        # Reset stuff
+        self._dump_list = []
+        self._filenames = {}
+
+        self._logger.debug("Metrics: %s", metrics)
+        pl_module.log_dict(metrics, prog_bar=True)

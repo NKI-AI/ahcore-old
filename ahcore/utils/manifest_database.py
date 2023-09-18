@@ -1,10 +1,12 @@
 # encoding: utf-8
 from pathlib import Path
 from types import TracebackType
-from typing import Generator, Literal, NamedTuple, Optional, Type
+from typing import Generator, Literal, Optional, Type
 
+from pydantic import AfterValidator, BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from typing_extensions import Annotated
 
 from ahcore.utils.database_models import Base, Image, Manifest, Patient, Split, SplitDefinitions
 from ahcore.utils.io import get_logger
@@ -15,11 +17,23 @@ class RecordNotFoundError(Exception):
     pass
 
 
-class ImageMetadata(NamedTuple):
+def is_positive(v: int | float) -> int | float:
+    assert v > 0, f"{v} is not a positive a positive {type(v)}"
+    return v
+
+
+PositiveInt = Annotated[int, AfterValidator(is_positive)]
+PositiveFloat = Annotated[float, AfterValidator(is_positive)]
+
+
+class ImageMetadata(BaseModel):
+    class Config:
+        allow_mutation = False
+
     filename: Path
-    height: int
-    width: int
-    mpp: float
+    height: PositiveInt
+    width: PositiveInt
+    mpp: PositiveFloat
 
 
 def open_db(database_uri: str):
@@ -45,6 +59,13 @@ def get_or_create_patient(session, patient_code, manifest):
         session.flush()
         return patient
     return existing_patient
+
+
+def fetch_image_metadata(image: Image) -> ImageMetadata:
+    """Extract metadata from an Image object."""
+    return ImageMetadata(
+        filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp)
+    )
 
 
 class DataManager:
@@ -91,12 +112,29 @@ class DataManager:
         for patient in patients:
             yield patient
 
-    @staticmethod
-    def _fetch_image_metadata(image: Image) -> ImageMetadata:
-        """Extract metadata from an Image object."""
-        return ImageMetadata(
-            filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp)
-        )
+    def get_image_metadata_by_split(
+        self, manifest_name: str, split_version: str, split_category: Optional[str] = None
+    ) -> Generator[ImageMetadata, None, None]:
+        """
+        Yields the metadata of images for a given manifest name, split version, and optional split category.
+
+        Parameters
+        ----------
+        manifest_name : str
+            The name of the manifest.
+        split_version : str
+            The version of the split.
+        split_category : Optional[str], default=None
+            The category of the split (e.g., "fit", "validate", "test").
+
+        Yields
+        -------
+        ImageMetadata
+            The metadata of the image.
+        """
+        for patient in self.get_records_by_split(manifest_name, split_version, split_category):
+            for image in patient.images:
+                yield fetch_image_metadata(image)
 
     def get_image_metadata_by_patient(self, patient_code: str) -> list[ImageMetadata]:
         """
@@ -115,9 +153,9 @@ class DataManager:
         patient = self._session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
         self._ensure_record(patient, f"Patient with code {patient_code} not found")
 
-        return [self._fetch_image_metadata(image) for image in patient.images]
+        return [fetch_image_metadata(image) for image in patient.images]
 
-    def get_image_metadata_by_filename(self, filename: str) -> ImageMetadata:
+    def get_image_by_filename(self, filename: str) -> Type[Image]:
         """
         Fetch the metadata for an image based on its filename.
 
@@ -128,13 +166,13 @@ class DataManager:
 
         Returns
         -------
-        ImageMetadata
-            Metadata of the image.
+        Image
+            The image from the database.
         """
         image = self._session.query(Image).filter_by(filename=filename).first()
         self._ensure_record(image, f"Image with filename {filename} not found")
         assert image
-        return self._fetch_image_metadata(image)
+        return image
 
     def get_image_metadata_by_id(self, image_id: int) -> ImageMetadata:
         """
@@ -152,7 +190,7 @@ class DataManager:
         """
         image = self._session.query(Image).filter_by(id=image_id).first()
         self._ensure_record(image, f"No image found with ID {image_id}")
-        return self._fetch_image_metadata(image)
+        return fetch_image_metadata(image)
 
     def __enter__(self) -> "DataManager":
         return self

@@ -5,11 +5,10 @@ This module contains the core Lightning module for ahcore. This module is respon
 - Wrapping models"""
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any
 
 import pytorch_lightning as pl
 import torch.optim.optimizer
-from dlup.data.dataset import ConcatDataset
 from pytorch_lightning.trainer.states import TrainerFn
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter

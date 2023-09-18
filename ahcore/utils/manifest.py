@@ -21,6 +21,7 @@ from dlup.tiling import GridOrder, TilingMode
 from pytorch_lightning.trainer.states import TrainerFn
 
 from ahcore.utils.data import DataDescription
+from ahcore.utils.database_models import Image, ImageAnnotations
 from ahcore.utils.io import get_logger
 from ahcore.utils.manifest_database import DataManager
 from ahcore.utils.rois import compute_rois
@@ -59,7 +60,22 @@ ImageBackends = Enum(value="ImageBackends", names=_ImageBackends_names)  # type:
 _Stages = Enum("Stages", [(_, _) for _ in ["fit", "validate", "test", "predict"]])  # type: ignore
 
 
-def _parse_annotations(annotations_root: Path, record):
+def parse_annotations_from_record(annotations_root: Path, record: list[ImageAnnotations]):
+    """
+    Parse the annotations from a record of type ImageAnnotations.
+
+    Parameters
+    ----------
+    annotations_root : Path
+        The root directory of the annotations.
+    record : list[Type[ImageAnnotations]]
+        The record containing the annotations.
+
+    Returns
+    -------
+    WsiAnnotations
+        The parsed annotations.
+    """
     if record is None:
         return
     assert len(record) == 1
@@ -71,6 +87,27 @@ def _parse_annotations(annotations_root: Path, record):
         return WsiAnnotations.from_geojson(annotations_root / filename)
     else:
         raise NotImplementedError
+
+
+def get_mask_and_annotations_from_record(annotations_root: Path, record: Image):
+    """
+    Get the mask and annotations from a record of type Image.
+
+    Parameters
+    ----------
+    annotations_root : Path
+        The root directory of the annotations.
+    record : Type[Image]
+        The record containing the mask and annotations.
+
+    Returns
+    -------
+    tuple[WsiAnnotations, WsiAnnotations]
+        The mask and annotations.
+    """
+    _masks = parse_annotations_from_record(annotations_root, record.masks)
+    _annotations = parse_annotations_from_record(annotations_root, record.annotations)
+    return _masks, _annotations
 
 
 def _get_rois(mask, data_description: DataDescription, stage: str):
@@ -104,8 +141,7 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
         labels = [(label.key, label.value) for label in record.labels] if record.labels else None
 
         for image in record.images:
-            mask = _parse_annotations(annotations_root, image.masks)
-            annotations = _parse_annotations(annotations_root, image.annotations)
+            mask, annotations = get_mask_and_annotations_from_record(annotations_root, image)
             rois = _get_rois(mask, data_description, stage)
             mask_threshold = 0.0 if stage != TrainerFn.FITTING else data_description.mask_threshold
 

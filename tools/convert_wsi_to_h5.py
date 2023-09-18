@@ -28,7 +28,6 @@ from pydantic import BaseModel
 from rich.progress import Progress
 
 from ahcore.cli import dir_path, file_path
-from ahcore.readers import H5FileImageReader
 from ahcore.writers import H5FileImageWriter
 
 logger = getLogger(__name__)
