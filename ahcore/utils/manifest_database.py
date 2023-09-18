@@ -66,7 +66,7 @@ class DataManager:
             raise RecordNotFoundError(f"{description} not found.")
 
     def get_records_by_split(
-        self, manifest_name: str, split_version: str, split_category: str
+        self, manifest_name: str, split_version: str, split_category: Optional[str] = None
     ) -> Generator[Patient, None, None]:
         manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
         self._ensure_record(manifest, f"Manifest with name {manifest_name}")
@@ -74,18 +74,20 @@ class DataManager:
         split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()
         self._ensure_record(split_definition, f"Split definition with version {split_version}")
 
-        patients = (
-            self._session.query(Patient)  # type: ignore
+        query = (
+            self._session.query(Patient)
             .join(Split)
-            .filter(
-                Patient.manifest_id == manifest.id,
-                Split.split_definition_id == split_definition.id,
-                Split.category == split_category,
-            )
-            .all()
+            .filter(Patient.manifest_id == manifest.id, Split.split_definition_id == split_definition.id)
         )
 
-        self._logger.info(f"Found {len(patients)} patients for split {split_category}")
+        if split_category is not None:
+            query = query.filter(Split.category == split_category)
+
+        patients = query.all()
+
+        self._logger.info(
+            f"Found {len(patients)} patients for split {split_category if split_category else 'all categories'}"
+        )
         for patient in patients:
             yield patient
 

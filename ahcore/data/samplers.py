@@ -24,7 +24,7 @@ class WsiBatchSampler(Sampler[List[int]]):
         self._compute_slices()
 
     def _compute_slices(self):
-        for idx, dataset in enumerate(self._dataset.datasets):
+        for idx, _ in enumerate(self._dataset.datasets):
             slice_start = 0 if len(self._slices) == 0 else self._slices[-1].stop
             slice_stop = self._dataset.cumulative_sizes[idx]
             self._slices.append(slice(slice_start, slice_stop))
