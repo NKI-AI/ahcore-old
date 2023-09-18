@@ -34,7 +34,7 @@ def copy_data(args: argparse.Namespace):
     with DataManager(manifest_fn) as dm:
         all_records = dm.get_records_by_split(args.manifest_name, args.split_name, split_category=None)
         with Progress() as progress:
-            task = progress.add_task("[cyan]Copying...", total=len(all_records))
+            task = progress.add_task("[cyan]Copying...")
             for patient in all_records:
                 for image in patient.images:
                     image_fn = image.filename
