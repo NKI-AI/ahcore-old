@@ -593,9 +593,6 @@ class ComputeWsiMetricsCallback(Callback):
         self._logger = get_logger(type(self).__name__)
 
     def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: Optional[str] = None) -> None:
-        assert self._data_description
-        index_map = self._data_description.index_map
-        assert index_map
         pl_module = cast(AhCoreLightningModule, pl_module)
 
         _callback: Optional[WriteH5Callback] = None
@@ -614,6 +611,11 @@ class ComputeWsiMetricsCallback(Callback):
 
         self._wsi_metrics = pl_module.wsi_metrics
         self._data_description = trainer.datamodule.data_description  # type: ignore
+
+        # For mypy
+        assert self._data_description
+        index_map = self._data_description.index_map
+        assert index_map
 
         if not self._data_description:
             raise ValueError("Data description is not set.")

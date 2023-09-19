@@ -144,6 +144,7 @@ class DlupDataModule(pl.LightningDataModule):
                 datasets.append(ds)
             return ConcatDataset(datasets)
 
+        self._logger.info("Constructing dataset for stage %s (this can take a while)", stage)
         dataset = self._load_from_cache(construct_dataset, stage=stage)
 
         lengths = np.asarray([len(ds) for ds in dataset.datasets])
