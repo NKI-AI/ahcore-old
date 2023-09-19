@@ -22,7 +22,11 @@ def convert_to_combined(path: Path) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("input", type=Path, help="Path to the input directory containing the geojson files.")
+    parser.add_argument(
+        "input",
+        type=Path,
+        help="Path to the input directory containing the geojson files.",
+    )
     parser.add_argument("output", type=Path, help="Path to the output file.")
     args = parser.parse_args()
 

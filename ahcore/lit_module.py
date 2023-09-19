@@ -164,9 +164,10 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
-        if self.global_step == 0:
-            if self._tensorboard:
-                self._tensorboard.add_graph(self._model, batch["image"])
+        # TODO: This is problematic as you first need to pass through the augmentations to get the correct shape
+        # if self.global_step == 0:
+        #     if self._tensorboard:
+        #         self._tensorboard.add_graph(self._model, batch["image"])
 
         output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
         return output

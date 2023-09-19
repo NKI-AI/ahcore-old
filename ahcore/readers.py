@@ -158,8 +158,14 @@ class H5FileImageReader:
         l1, l2 = location
         s1, s2 = size
 
-        original_location = (int(math.floor(l1 / scaling)) - order, int(math.floor(l2 / scaling)) - order)
-        original_size = (int(math.ceil(s1 / scaling)) + order, int(math.ceil(s2 / scaling)) + order)
+        original_location = (
+            int(math.floor(l1 / scaling)) - order,
+            int(math.floor(l2 / scaling)) - order,
+        )
+        original_size = (
+            int(math.ceil(s1 / scaling)) + order,
+            int(math.ceil(s2 / scaling)) + order,
+        )
 
         raw_region = self.read_region_raw(original_location, original_size)
 

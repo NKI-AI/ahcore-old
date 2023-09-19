@@ -64,7 +64,10 @@ def get_or_create_patient(session, patient_code, manifest):
 def fetch_image_metadata(image: Image) -> ImageMetadata:
     """Extract metadata from an Image object."""
     return ImageMetadata(
-        filename=Path(image.filename), height=int(image.height), width=int(image.width), mpp=float(image.mpp)
+        filename=Path(image.filename),
+        height=int(image.height),
+        width=int(image.width),
+        mpp=float(image.mpp),
     )
 
 
@@ -87,7 +90,10 @@ class DataManager:
             raise RecordNotFoundError(f"{description} not found.")
 
     def get_records_by_split(
-        self, manifest_name: str, split_version: str, split_category: Optional[str] = None
+        self,
+        manifest_name: str,
+        split_version: str,
+        split_category: Optional[str] = None,
     ) -> Generator[Patient, None, None]:
         manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
         self._ensure_record(manifest, f"Manifest with name {manifest_name}")
@@ -98,7 +104,10 @@ class DataManager:
         query = (
             self._session.query(Patient)
             .join(Split)
-            .filter(Patient.manifest_id == manifest.id, Split.split_definition_id == split_definition.id)
+            .filter(
+                Patient.manifest_id == manifest.id,
+                Split.split_definition_id == split_definition.id,
+            )
         )
 
         if split_category is not None:
@@ -113,7 +122,10 @@ class DataManager:
             yield patient
 
     def get_image_metadata_by_split(
-        self, manifest_name: str, split_version: str, split_category: Optional[str] = None
+        self,
+        manifest_name: str,
+        split_version: str,
+        split_category: Optional[str] = None,
     ) -> Generator[ImageMetadata, None, None]:
         """
         Yields the metadata of images for a given manifest name, split version, and optional split category.

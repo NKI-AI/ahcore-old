@@ -95,7 +95,13 @@ class Identity(K.AugmentationBase2D):
     Identity transform.
     """
 
-    def __init__(self, p: float = 1.0, p_batch: float = 1.0, same_on_batch: bool = True, keepdim: bool = True):
+    def __init__(
+        self,
+        p: float = 1.0,
+        p_batch: float = 1.0,
+        same_on_batch: bool = True,
+        keepdim: bool = True,
+    ):
         if p != 1.0 or p_batch != 1.0 or not same_on_batch:
             raise ValueError("Identity is always applied. No probabilities can be applied.")
 

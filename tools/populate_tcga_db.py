@@ -54,7 +54,11 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
             # For now random.
             split_category = random.choices(["fit", "validate", "test"], [70, 20, 10])[0]
 
-            split = Split(category=split_category, patient=patient, split_definition=split_definition)
+            split = Split(
+                category=split_category,
+                patient=patient,
+                split_definition=split_definition,
+            )
             session.add(split)
 
         # Add only the label if it does not exist yet.
@@ -78,7 +82,12 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
             mpp = slide.mpp
             width, height = slide.size
             image = Image(
-                filename=str(filename), mpp=mpp, height=height, width=width, reader="OPENSLIDE", patient=patient
+                filename=str(filename),
+                mpp=mpp,
+                height=height,
+                width=width,
+                reader="OPENSLIDE",
+                patient=patient,
             )
         session.add(image)
         session.flush()  # Flush so that Image ID is populated for future records
