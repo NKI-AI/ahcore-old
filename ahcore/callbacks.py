@@ -201,7 +201,7 @@ class _ValidationDataset(Dataset):
             "annotations"
         ]
 
-        points, region, roi = convert_annotations(
+        points, boxes, region, roi = convert_annotations(
             annotations,
             self._region_size,
             index_map=self._data_description.index_map,
@@ -840,3 +840,4 @@ class ComputeWsiMetricsCallback(Callback):
         # TODO: Maybe put this elsewhere?
         metrics = {f"validate/{k}": v for k, v in metrics.items()}
         pl_module.log_dict(metrics, prog_bar=True)
+
