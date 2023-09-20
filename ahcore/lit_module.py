@@ -96,7 +96,9 @@ class AhCoreLightningModule(pl.LightningModule):
     ) -> dict[str, torch.Tensor]:
         if not self._metrics:
             return {}
-        metrics = {f"{stage.name}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
+
+        _stage = stage.name if isinstance(stage, TrainerFn) else stage
+        metrics = {f"{_stage}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
     def do_step(self, batch, batch_idx: int, stage: TrainerFn | str):
@@ -137,8 +139,10 @@ class AhCoreLightningModule(pl.LightningModule):
         if stage != TrainerFn.FITTING:
             output["prediction"] = _prediction
 
+        _stage = stage.name if isinstance(stage, TrainerFn) else stage
+
         self.log(
-            f"{stage.name}/loss",
+            f"{_stage}/loss",
             _loss,
             batch_size=batch_size,
             sync_dist=True,

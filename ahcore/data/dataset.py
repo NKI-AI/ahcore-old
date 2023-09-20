@@ -110,7 +110,7 @@ class DlupDataModule(pl.LightningDataModule):
     def data_manager(self) -> DataManager:
         return self._data_manager
 
-    def setup(self, stage: Optional[str] = None) -> None:
+    def setup(self, stage: str) -> None:
         if not stage:
             return
 
@@ -134,7 +134,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
-    def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn | None = None):
+    def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn):
         if not data_iterator:
             return None
 
