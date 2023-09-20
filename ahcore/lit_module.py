@@ -20,8 +20,6 @@ logger = get_logger(__name__)
 
 
 class AhCoreLightningModule(pl.LightningModule):
-    # FIXME: This can be achieved using .name
-    STAGE_MAP = {TrainerFn.FITTING: "train", TrainerFn.VALIDATING: "val"}
     RELEVANT_KEYS = [
         "coordinates",
         "mpp",
@@ -98,7 +96,7 @@ class AhCoreLightningModule(pl.LightningModule):
     ) -> dict[str, torch.Tensor]:
         if not self._metrics:
             return {}
-        metrics = {f"{self.STAGE_MAP[stage]}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
+        metrics = {f"{stage.name}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
     def do_step(self, batch, batch_idx: int, stage: TrainerFn | str):
@@ -140,7 +138,7 @@ class AhCoreLightningModule(pl.LightningModule):
             output["prediction"] = _prediction
 
         self.log(
-            f"{self.STAGE_MAP[stage]}/loss",
+            f"{stage.name}/loss",
             _loss,
             batch_size=batch_size,
             sync_dist=True,
