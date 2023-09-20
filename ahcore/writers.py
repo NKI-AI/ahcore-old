@@ -142,12 +142,6 @@ class H5FileImageWriter:
                 first_coordinates, first_batch = next(batch_generator)
                 self.init_writer(first_batch, h5file)
 
-                # For mypy
-                assert self._grid, "Grid is not initialized"
-                assert self._tile_indices, "Tile indices are not initialized"
-                assert self._image_dataset, "Image dataset is not initialized"
-                assert self._coordinates_dataset, "Coordinates dataset is not initialized"
-
                 # Mostly for mypy
                 assert self._grid, "Grid is not initialized"
                 assert self._tile_indices, "Tile indices are not initialized"

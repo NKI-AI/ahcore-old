@@ -335,9 +335,8 @@ class WriteH5Callback(Callback):
                 step=pl_module.global_step,
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            output_path = self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}"
-
-            with open(output_path / "image_h5_link.txt", "a") as file:
+            link_fn = self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}" / "image_h5_link.txt"
+            with open(link_fn, "a" if link_fn.is_file() else "w") as file:
                 file.write(f"{filename},{output_filename}\n")
 
             self._logger.debug("%s -> %s", filename, output_filename)
