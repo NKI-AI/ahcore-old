@@ -5,7 +5,7 @@ defaults:
   - model_summary.yaml
   - rich_progress_bar.yaml
   - write_h5_callback.yaml
-  - write_tiff_callback.yaml
+#  - write_tiff_callback.yaml
   - compute_wsi_metrics_callback.yaml # This needs to follow write_h5_callback as it requires the outputs
   - _self_
 
@@ -22,7 +22,7 @@ model_checkpoint:
   auto_insert_metric_name: False
 
 early_stopping:
-  monitor: "val/loss"
+  monitor: "wsi_dice/stroma"
   patience: 1000
   mode: "min"
 

@@ -679,6 +679,8 @@ class ComputeWsiMetricsCallback(Callback):
         self._data_manager = None
         self._validate_filenames_gen = None
 
+        self._validate_metadata_gen = None
+
         self._dump_list: list[dict[str, str]] = []
         self._logger = get_logger(type(self).__name__)
 
@@ -720,9 +722,6 @@ class ComputeWsiMetricsCallback(Callback):
 
         # Here we can query the database for the validation images
         self._data_manager: DataManager = trainer.datamodule.data_manager  # type: ignore
-        # Initialize the generator here
-
-        self._validate_metadata_gen = self._create_validate_image_metadata_gen()
 
     def _create_validate_image_metadata_gen(
         self,
@@ -744,6 +743,9 @@ class ComputeWsiMetricsCallback(Callback):
     @property
     def metrics(self):
         return self._metrics
+
+    def on_validation_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        self._validate_metadata_gen = self._create_validate_image_metadata_gen()
 
     def on_validation_batch_end(
         self,
@@ -775,6 +777,7 @@ class ComputeWsiMetricsCallback(Callback):
 
             # Fill up the initial task pool
             for image_metadata in itertools.islice(self._validate_metadata, self._max_processes):
+                logger.info("Metadata: %s", image_metadata)
                 # Assemble the task data
                 # filename", "h5_filename", "metadata", "mask", "annotations
                 task_data = prepare_task_data(
@@ -814,9 +817,9 @@ class ComputeWsiMetricsCallback(Callback):
 
                         # Schedule a new task if there are more filenames left in the generator
                         next_metadata = next(self._validate_metadata, None)
-                        if next_metadata:
+                        while next_metadata:
                             task_data = prepare_task_data(
-                                image_metadata.filename,
+                                next_metadata.filename,  # <-- Changed from image_metadata.filename
                                 self._dump_dir,
                                 pl_module,
                                 self._data_description,
@@ -834,6 +837,7 @@ class ComputeWsiMetricsCallback(Callback):
                                 self._save_per_image,
                             )
 
+                            next_metadata = next(self._validate_metadata, None)
         return metrics
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):

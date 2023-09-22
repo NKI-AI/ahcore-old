@@ -155,7 +155,8 @@ class WSIDiceMetric(WSIMetric):
         self.wsis: dict[str, Any] = {}
         self.compute_overall_dice = compute_overall_dice
         self._num_classes = self._data_description.num_classes
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = "cpu"
 
         # Invert the index map
         _index_map = {}
