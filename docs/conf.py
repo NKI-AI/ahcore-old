@@ -23,9 +23,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(".."))
 
-from typing import Dict, List
-
-import ahcore
+from typing import Dict, List  # noqa: E402
+import ahcore  # noqa: E402
 
 # -- General configuration ---------------------------------------------
 
@@ -118,7 +117,7 @@ todo_include_todos = False
 # Sphinx-gallery configuration
 # ------------------------------------------------------------------------
 
-from packaging.version import parse
+from packaging.version import parse  # noqa: E402
 
 v = parse(release)
 if v.release is None:
@@ -218,8 +217,8 @@ texinfo_documents = [
 # Source code links
 # ----------------------------------------------------------------------------
 
-import inspect
-from os.path import dirname, relpath
+import inspect  # noqa: E402
+from os.path import dirname, relpath  # noqa: E402
 
 
 # Function courtesy of NumPy to return URLs containing line numbers
@@ -241,7 +240,7 @@ def linkcode_resolve(domain, info):
     for part in fullname.split("."):
         try:
             obj = getattr(obj, part)
-        except:
+        except:  # noqa
             return None
 
     # Strip decorators which would resolve to the source of the decorator
@@ -249,14 +248,14 @@ def linkcode_resolve(domain, info):
 
     try:
         fn = inspect.getsourcefile(obj)
-    except:
+    except:  # noqa
         fn = None
     if not fn:
         return None
 
     try:
         source, start_line = inspect.getsourcelines(obj)
-    except:
+    except:  # noqa
         linespec = ""
     else:
         stop_line = start_line + len(source) - 1

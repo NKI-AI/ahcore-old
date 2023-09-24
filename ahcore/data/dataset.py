@@ -4,7 +4,7 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Iterator
 
 import numpy as np
 import pytorch_lightning as pl
