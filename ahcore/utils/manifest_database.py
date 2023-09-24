@@ -18,7 +18,7 @@ class RecordNotFoundError(Exception):
 
 
 def is_positive(v: int | float) -> int | float:
-    assert v > 0, f"{v} is not a positive a positive {type(v)}"
+    assert v > 0, f"{v} is not a positive {type(v)}"
     return v
 
 

@@ -97,7 +97,7 @@ class AhCoreLightningModule(pl.LightningModule):
         if not self._metrics:
             return {}
 
-        _stage = stage.name if isinstance(stage, TrainerFn) else stage
+        _stage = stage.value if isinstance(stage, TrainerFn) else stage
         metrics = {f"{_stage}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
@@ -139,7 +139,7 @@ class AhCoreLightningModule(pl.LightningModule):
         if stage != TrainerFn.FITTING:
             output["prediction"] = _prediction
 
-        _stage = stage.name if isinstance(stage, TrainerFn) else stage
+        _stage = stage.value if isinstance(stage, TrainerFn) else stage
 
         self.log(
             f"{_stage}/loss",
@@ -148,6 +148,7 @@ class AhCoreLightningModule(pl.LightningModule):
             sync_dist=True,
             on_epoch=True,
         )
+
         # Log the metrics
         self.log_dict(
             _metrics,

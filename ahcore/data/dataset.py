@@ -110,17 +110,14 @@ class DlupDataModule(pl.LightningDataModule):
     def data_manager(self) -> DataManager:
         return self._data_manager
 
-    def setup(self, stage: str) -> None:
-        if not stage:
-            return
-
+    def setup(self, stage: TrainerFn) -> None:
         if stage not in (e.value for e in TrainerFn):  # type: ignore
             raise ValueError(f"Stage should be one of {TrainerFn}")
 
         if stage and self._already_called[stage]:
             return
 
-        self._logger.info("Constructing dataset iterator for stage %s", stage)
+        self._logger.info("Constructing dataset iterator for stage %s", stage.value)
 
         def dataset_iterator() -> Iterator[Dataset]:
             gen = datasets_from_data_description(
