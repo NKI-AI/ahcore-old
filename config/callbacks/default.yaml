@@ -16,7 +16,7 @@ learningrate_monitor:
 model_checkpoint:
   dirpath: ${paths.output_dir}/checkpoints
   filename: "epoch_{epoch:03d}"
-  monitor: "val/loss"
+  monitor: "validate/loss"
   mode: "min"
   save_last: True
   auto_insert_metric_name: False

@@ -600,6 +600,8 @@ def compute_metrics_for_case(
 
     dump_list = []
 
+    logger.info("Computing metrics for %s", filename)
+
     with H5FileImageReader(h5_filename, stitching_mode=StitchingMode.CROP) as h5reader:
         dataset_of_validation_image = _ValidationDataset(
             data_description=data_description,
@@ -862,4 +864,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._filenames = {}
 
         self._logger.debug("Metrics: %s", metrics)
+
+        # TODO: Maybe put this elsewhere?
+        metrics = {f"validate/{k}": v for k, v in metrics.items()}
         pl_module.log_dict(metrics, prog_bar=True)
