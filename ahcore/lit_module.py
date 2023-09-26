@@ -147,6 +147,7 @@ class AhCoreLightningModule(pl.LightningModule):
             batch_size=batch_size,
             sync_dist=True,
             on_epoch=True,
+            prog_bar=True,
         )
 
         # Log the metrics

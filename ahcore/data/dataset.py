@@ -223,7 +223,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if not self._fit_data_iterator:
-            self.setup("fit")
+            self.setup(TrainerFn.FITTING)
         return self._construct_concatenated_dataloader(
             self._fit_data_iterator,
             batch_size=self._batch_size,
@@ -232,7 +232,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         if not self._validate_data_iterator:
-            self.setup("validate")
+            self.setup(TrainerFn.VALIDATING)
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         val_dataloader = self._construct_concatenated_dataloader(
