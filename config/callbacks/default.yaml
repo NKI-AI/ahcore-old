@@ -22,7 +22,7 @@ model_checkpoint:
   auto_insert_metric_name: False
 
 early_stopping:
-  monitor: "wsi_dice/stroma"
+  monitor: "validate/wsi_dice/stroma"
   patience: 1000
   mode: "min"
 
