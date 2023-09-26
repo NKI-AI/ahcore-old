@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import abc
+from collections import defaultdict
 from typing import Any, List, Tuple
 
 import torch
@@ -81,6 +82,7 @@ class DiceMetric(AhCoreMetric):
 
 
 class MetricFactory:
+    # TODO: this should be rewritten to actually be a factory
     """Factory to create the metrics. These are fixed for the different tasks
     (e.g., segmentation, detection, whole-slide-level classification.
     """
@@ -247,13 +249,51 @@ class WSIDiceMetric(WSIMetric):
             class_idx: {"intersection": 0, "cardinality": 0, "dice": None} for class_idx in range(self._num_classes)
         }
 
-    def get_average_score(self) -> dict[str, float]:
+    def get_average_score(
+        self, precomputed_output: list[list[dict[str, dict[str, float]]]] | None = None
+    ) -> dict[str, float]:
+        if (
+            precomputed_output is not None
+        ):  # Used for multiprocessing, where multiple instances of this class are created
+            avg_dict = self.static_average_wsi_dice(precomputed_output)
+            if (
+                avg_dict
+            ):  # check if the precomputed output contained wsi dice scores, otherwise continue to compute it normally
+                return avg_dict
         if self.compute_overall_dice:
             dices = self._get_overall_dice()
         else:
             dices = self._get_dice_averaged_over_total_wsis()
         avg_dict = {f"{self.name}/{self._label_to_class[idx]}": value for idx, value in dices.items()}
         return avg_dict
+
+    @staticmethod
+    def static_average_wsi_dice(precomputed_output: list[list[dict[str, dict[str, float]]]]) -> dict[str, float]:
+        "Static method to compute the average WSI dice score over a list of WSI dice scores, useful for multiprocessing."
+        # Initialize defaultdicts to handle the sum and count of dice scores for each class
+        class_sum: dict[str, float] = defaultdict(float)
+        class_count: dict[str, int] = defaultdict(int)
+
+        # Flatten the list and extract 'wsi_dice' dictionaries
+        wsi_dices: list[dict[str, float]] = [
+            wsi_metric.get("wsi_dice", {}) for sublist in precomputed_output for wsi_metric in sublist
+        ]
+        # Check if the list is empty -- then the precomputed output did not contain any wsi dice scores
+        if not wsi_dices:
+            return {}
+
+        # Update sum and count for each class in a single pass
+        for wsi_dice in wsi_dices:
+            for class_name, dice_score in wsi_dice.items():
+                class_sum[class_name] += dice_score
+                class_count[class_name] += 1
+
+        # Compute average dice scores in a dictionary comprehension with consistent naming
+        avg_dice_scores = {
+            f"{'wsi_dice'}/{class_name}": class_sum[class_name] / class_count[class_name]
+            for class_name in class_sum.keys()
+        }
+        return avg_dice_scores
 
     def reset(self):
         self.wsis = {}
@@ -263,6 +303,7 @@ class WSIDiceMetric(WSIMetric):
 
 
 class WSIMetricFactory:
+    # TODO: this should be rewritten to actually be a factory
     def __init__(self, metrics: list[WSIMetric]) -> None:
         super().__init__()
         names = [metric.name for metric in metrics]
@@ -294,10 +335,12 @@ class WSIMetricFactory:
         for metric in self._metrics:
             metric.process_batch(predictions, target, wsi_name=wsi_name, roi=roi)
 
-    def get_average_score(self) -> dict[str, float]:
+    def get_average_score(
+        self, precomputed_output: list[list[dict[str, dict[str, float]]]] | None = None
+    ) -> dict[str, float]:
         output = {}
         for metric in self._metrics:
-            output.update(metric.get_average_score())
+            output.update(metric.get_average_score(precomputed_output))
         return output
 
     def reset(self) -> None:

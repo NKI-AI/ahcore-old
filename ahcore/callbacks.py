@@ -335,7 +335,9 @@ class WriteH5Callback(Callback):
                 step=pl_module.global_step,
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            link_fn = self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}" / "image_h5_link.txt"
+            link_fn = (
+                self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}" / "image_h5_link.txt"
+            )
             with open(link_fn, "a" if link_fn.is_file() else "w") as file:
                 file.write(f"{filename},{output_filename}\n")
 
@@ -746,7 +748,7 @@ class ComputeWsiMetricsCallback(Callback):
         metrics = []
 
         with multiprocessing.Pool(processes=self._max_processes) as pool:
-            results_to_filename = {}
+            results_to_filename: dict = {}
             completed_tasks = 0
 
             # Fill up the initial task pool
@@ -822,8 +824,8 @@ class ComputeWsiMetricsCallback(Callback):
 
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
-        self.compute_metrics(trainer, pl_module)
-        metrics = self._wsi_metrics.get_average_score()
+        computed_metrics = self.compute_metrics(trainer, pl_module)
+        metrics = self._wsi_metrics.get_average_score(computed_metrics)
         with open(
             self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
             "w",
@@ -840,4 +842,3 @@ class ComputeWsiMetricsCallback(Callback):
         # TODO: Maybe put this elsewhere?
         metrics = {f"validate/{k}": v for k, v in metrics.items()}
         pl_module.log_dict(metrics, prog_bar=True)
-
