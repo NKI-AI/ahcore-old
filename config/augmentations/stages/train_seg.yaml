@@ -2,9 +2,9 @@ _target_: ahcore.transforms.augmentations.AugmentationFactory
 
 # These transforms will be applied in order as a first step.
 initial_transforms:
-  # - _target_: ahcore.transforms.augmentations.MeanStdNormalizer
-  #   mean: [0.0, 0.0, 0.0]
-  #   std: [1.0, 1.0, 1.0]
+  - _target_: ahcore.transforms.augmentations.MeanStdNormalizer
+    mean: [0.0, 0.0, 0.0]
+    std: [1.0, 1.0, 1.0]
 
 # [a, b] select between a and b random intensity transforms to apply.
 # If True, will select all in a random order. If False, will apply all sequentially.
@@ -21,9 +21,6 @@ intensity_augmentations:
     contrast: 0.05
     saturation: 0.05
     hue: 0.05
-  - _target_: kornia.augmentation.Normalize
-    mean: [0.0, 0.0, 0.0]
-    std: [1.0, 1.0, 1.0]
   - _target_: kornia.augmentation.RandomGaussianBlur
     p: 0.5
     kernel_size: [9, 9]

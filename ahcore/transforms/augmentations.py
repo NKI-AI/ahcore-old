@@ -46,6 +46,50 @@ def cast_list_to_tensor(obj, default=0.0):
     return obj
 
 
+class MeanStdNormalizer(nn.Module):
+    """
+    Normalizes the mean and standard deviation of the input image. Assumes the original range is `[0, 255]`.
+    """
+
+    def __init__(
+        self,
+        mean: tuple[float, float, float] | None = None,
+        std: tuple[float, float, float] | None = None,
+    ):
+        """
+        Parameters
+        ----------
+        mean : tuple[float, float, float], optional
+        std : tuple[float, float, float], optional
+        """
+        super().__init__()
+        if mean is None:
+            self._mean = nn.Parameter(torch.Tensor([0.0] * 3), requires_grad=False)
+        else:
+            self._mean = nn.Parameter(torch.Tensor(mean), requires_grad=False)
+
+        if std is None:
+            self._std = nn.Parameter(torch.Tensor([1.0] * 3), requires_grad=False)
+        else:
+            self._std = nn.Parameter(torch.Tensor(std), requires_grad=False)
+
+    def forward(self, *args: torch.Tensor, **kwargs):
+        output = []
+        data_keys = kwargs["data_keys"]
+        for sample, data_key in zip(args, data_keys):
+            if data_key in [DataKey.INPUT, 0, "INPUT"]:
+                sample = sample / 255.0
+                sample = (sample - self._mean[..., None, None].to(sample.device)) / self._std[..., None, None].to(
+                    sample.device
+                )
+            output.append(sample)
+
+        if len(output) == 1:
+            return output[0]
+
+        return output
+
+
 class Identity(K.AugmentationBase2D):
     """
     Identity transform.
