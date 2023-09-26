@@ -14,7 +14,7 @@ def convert_to_combined(path: Path) -> dict:
     """
     Convert a single geojson file to the combined format.
     """
-    all_geojsons = list([_ for _ in path.glob("*.json") if _.name != "roi.json"])
+    all_geojsons = list([_ for _ in path.glob("*.json")])
 
     annotations = WsiAnnotations.from_geojson(all_geojsons)
     return annotations.as_geojson(split_per_label=False)
