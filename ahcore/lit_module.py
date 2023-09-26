@@ -202,9 +202,9 @@ class AhCoreLightningModule(pl.LightningModule):
                 "optimizer": optimizer,
                 "lr_scheduler": {
                     "scheduler": scheduler,
-                    "monitor": "val/loss",
+                    "monitor": "validate/loss",
                     "interval": "epoch",
-                    "frequency": 1,
+                    "frequency": self.trainer.check_val_every_n_epoch,
                 },
             }
         return {"optimizer": optimizer}
