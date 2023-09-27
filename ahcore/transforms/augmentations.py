@@ -230,7 +230,7 @@ class CenterCrop(nn.Module):
         if isinstance(size, int):
             _size = (size, size)
 
-        if isinstance(size, ListConfig):
+        if isinstance(size, ListConfig) or isinstance(size, list):
             _size = tuple(size)
 
         self._cropper = K.CenterCrop(size=_size, align_corners=True, p=1.0, keepdim=False, cropping_mode="slice")
@@ -252,7 +252,7 @@ def _parse_random_apply(random_apply: int | bool | tuple[int, int] | ListConfig)
     if isinstance(random_apply, (int, bool)):
         return random_apply
 
-    if isinstance(random_apply, ListConfig):
+    if isinstance(random_apply, ListConfig) or isinstance(random_apply, list):
         return cast(tuple[int, int], tuple(random_apply))
 
     return random_apply
@@ -261,7 +261,7 @@ def _parse_random_apply(random_apply: int | bool | tuple[int, int] | ListConfig)
 def _parse_random_apply_weights(
     random_apply_weights: list[float] | ListConfig | None,
 ) -> list[float] | None:
-    if isinstance(random_apply_weights, ListConfig):
+    if isinstance(random_apply_weights, ListConfig) or isinstance(random_apply_weights, list):
         return cast(list[float], list(random_apply_weights))
 
     return random_apply_weights

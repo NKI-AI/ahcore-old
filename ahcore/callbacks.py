@@ -291,31 +291,6 @@ class WriteH5Callback(Callback):
     def dump_dir(self) -> Path:
         return self._dump_dir
 
-    def __check_process(self) -> bool | None:
-        """
-        This module communicates with all the child processes spawned by the main process while writing h5 files.
-        It monitors if the target function of the child process has been correctly executed.
-
-        Returns
-        -------
-        bool | None
-        """
-        # This is for mypy
-        assert self._current_filename, "_current_filename shouldn't be None here"
-
-        connection = self._writers[self._current_filename]["connection"]
-        if connection.poll():  # Check if there's a message from the child process
-            status, filename, message = connection.recv()  # Receive the message
-            if status is True:
-                self._logger.debug(f"Successfully processed {self._current_filename}")
-            elif status is False:
-                raise Exception(f"Failed processing {self._current_filename} due to {message}")
-            connection.close()
-            return status
-        else:
-            # Sometimes, we may encounter EOF if the communication from the child process has already been processed.
-            return None
-
     def __process_management(self) -> None:
         """
         Handle the graceful termination of multiple processes at the end of h5 writing.
@@ -329,9 +304,6 @@ class WriteH5Callback(Callback):
 
         self._writers[self._current_filename]["queue"].put(None)
         self._writers[self._current_filename]["process"].join()
-        self.__check_process()
-        # TODO: Are these really needed?
-        self._writers[self._current_filename]["process"].terminate()
         self._writers[self._current_filename]["process"].close()
         self._writers[self._current_filename]["queue"].close()
 
@@ -363,7 +335,9 @@ class WriteH5Callback(Callback):
                 step=pl_module.global_step,
             )
             output_filename.parent.mkdir(parents=True, exist_ok=True)
-            link_fn = output_filename.parent / "image_h5_link.txt"
+            link_fn = (
+                self.dump_dir / "outputs" / f"{pl_module.name}" / f"step_{pl_module.global_step}" / "image_h5_link.txt"
+            )
             with open(link_fn, "a" if link_fn.is_file() else "w") as file:
                 file.write(f"{filename},{output_filename}\n")
 
@@ -774,7 +748,7 @@ class ComputeWsiMetricsCallback(Callback):
         metrics = []
 
         with multiprocessing.Pool(processes=self._max_processes) as pool:
-            results_to_filename = {}
+            results_to_filename: dict = {}
             completed_tasks = 0
 
             # Fill up the initial task pool
@@ -850,8 +824,8 @@ class ComputeWsiMetricsCallback(Callback):
 
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
-        self.compute_metrics(trainer, pl_module)
-        metrics = self._wsi_metrics.get_average_score()
+        computed_metrics = self.compute_metrics(trainer, pl_module)
+        metrics = self._wsi_metrics.get_average_score(computed_metrics)
         with open(
             self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
             "w",

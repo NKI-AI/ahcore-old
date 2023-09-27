@@ -10,7 +10,7 @@ dotenv.load_dotenv(override=True)
 @hydra.main(
     config_path="../config",
     config_name="inference.yaml",
-    version_base="1.2",
+    version_base="1.3",
 )
 def main(config: DictConfig):
     # Imports can be nested inside @hydra.main to optimize tab completion

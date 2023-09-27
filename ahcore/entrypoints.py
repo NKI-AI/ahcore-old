@@ -86,6 +86,7 @@ def train(config: DictConfig) -> torch.Tensor | None:
                 config.augmentations[stage],
                 data_description=data_description,
                 data_module=datamodule,
+                _convert_="object",
             )
 
     if not config.losses.get("_target_"):

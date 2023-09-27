@@ -8,16 +8,9 @@ initial_transforms:
 
 # [a, b] select between a and b random intensity transforms to apply.
 # If True, will select all in a random order. If False, will apply all sequentially.
-random_apply_intensity: [1,]
+random_apply_intensity: false
 random_apply_weights_intensity: null
 intensity_augmentations:
-  - _target_: kornia.augmentation.RandomGaussianBlur
-    p: 0.5
-    kernel_size: [9, 9]
-    sigma: [0.1, 1.0]
-  - _target_: kornia.augmentation.RandomSharpness
-    p: 0.5
-    sharpness: 10
   - _target_: ahcore.transforms.augmentations.HEDColorAugmentation
     p: 0.5
     scale_sigma: 0.2  # HED-light
@@ -28,6 +21,14 @@ intensity_augmentations:
     contrast: 0.05
     saturation: 0.05
     hue: 0.05
+  - _target_: kornia.augmentation.RandomGaussianBlur
+    p: 0.5
+    kernel_size: [9, 9]
+    sigma: [0.1, 1.0]
+  - _target_: kornia.augmentation.RandomSharpness
+    p: 0.5
+    sharpness: 10
+
 #  - _target_: kornia.augmentation.RandomSaturation
 #    p: 0.5
 #    saturation: [0.5, 2.0]

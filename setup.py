@@ -36,6 +36,7 @@ install_requires = [
     "h5py>=3.8.0",
     # "escnn>=1.0.8",  # To use equivariant unets
     "monai[einops]==1.2.0",
+    "imagecodecs==2023.9.4",
 ]
 
 
