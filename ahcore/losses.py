@@ -1,6 +1,7 @@
-# encoding: utf-8
 """
 Loss factory
+
+All the relevant loss modules. In ahcore, losses are returned per sample in the batch.
 
 """
 from __future__ import annotations

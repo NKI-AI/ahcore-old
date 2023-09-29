@@ -1,10 +1,9 @@
-# encoding: utf-8
 """
 Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from typing import Callable, Iterator
 
 import numpy as np
 import pytorch_lightning as pl
@@ -110,14 +109,14 @@ class DlupDataModule(pl.LightningDataModule):
     def data_manager(self) -> DataManager:
         return self._data_manager
 
-    def setup(self, stage: TrainerFn) -> None:
+    def setup(self, stage: str) -> None:
         if stage not in (e.value for e in TrainerFn):  # type: ignore
             raise ValueError(f"Stage should be one of {TrainerFn}")
 
         if stage and self._already_called[stage]:
             return
 
-        self._logger.info("Constructing dataset iterator for stage %s", stage.value)
+        self._logger.info("Constructing dataset iterator for stage %s", stage)
 
         def dataset_iterator() -> Iterator[Dataset]:
             gen = datasets_from_data_description(
@@ -195,35 +194,9 @@ class DlupDataModule(pl.LightningDataModule):
 
         return obj
 
-    def _construct_dataloader_iterator(
-        self, data_iterator, batch_size: int
-    ) -> Iterator[tuple[dict[str, Any], DataLoader]] | None:
-        # if not data_iterator:
-        #     return None
-        #
-        # test_description = self.data_description.inference_grid
-        # # TODO: This should be somewhere where we validate the configuration
-        # if (
-        #     test_description.output_tile_size is not None
-        #     and test_description.output_tile_size != test_description.tile_size
-        # ):
-        #     raise ValueError(f"`output_tile_size should be equal to tile_size in inference or set to None.")
-        #
-        # for dataset in data_iterator:
-        #     metadata = create_inference_metadata(dataset, test_description.mpp, test_description.tile_size)
-        #     dataloader = DataLoader(
-        #         dataset,
-        #         batch_size=batch_size,
-        #         num_workers=self._num_workers,
-        #         pin_memory=self._pin_memory,
-        #     )
-        yield None, None
-
-        # yield metadata, dataloader
-
     def train_dataloader(self):
         if not self._fit_data_iterator:
-            self.setup(TrainerFn.FITTING)
+            self.setup(TrainerFn.FITTING.value)
         return self._construct_concatenated_dataloader(
             self._fit_data_iterator,
             batch_size=self._batch_size,
@@ -232,7 +205,7 @@ class DlupDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         if not self._validate_data_iterator:
-            self.setup(TrainerFn.VALIDATING)
+            self.setup(TrainerFn.VALIDATING.value)
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         val_dataloader = self._construct_concatenated_dataloader(
@@ -245,18 +218,11 @@ class DlupDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         if not self._test_data_iterator:
-            self.setup(TrainerFn.TESTING)
+            self.setup(TrainerFn.TESTING.value)
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         return self._construct_concatenated_dataloader(
             self._validate_data_iterator, batch_size=batch_size, stage=TrainerFn.TESTING
         )
-
-    def predict_dataloader(self):
-        if not self._predict_data_iterator:
-            self.setup(TrainerFn.PREDICTING)
-
-        batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
-        return self._construct_dataloader_iterator(self._predict_data_iterator, batch_size=batch_size)
 
     def teardown(self, stage: str | None = None) -> None:
         getattr(self, f"_{stage}_data_iterator").__del__()

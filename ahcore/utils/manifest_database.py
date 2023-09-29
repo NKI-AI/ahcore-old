@@ -1,34 +1,23 @@
-# encoding: utf-8
+"""
+AhCore Manifest Database
+"""
 from pathlib import Path
 from types import TracebackType
 from typing import Generator, Literal, Optional, Type
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from typing_extensions import Annotated
 
+from ahcore.exceptions import RecordNotFoundError
 from ahcore.utils.database_models import Base, Image, Manifest, Patient, Split, SplitDefinitions
 from ahcore.utils.io import get_logger
-
-
-# Custom exceptions
-class RecordNotFoundError(Exception):
-    pass
-
-
-def is_positive(v: int | float) -> int | float:
-    assert v > 0, f"{v} is not a positive {type(v)}"
-    return v
-
-
-PositiveInt = Annotated[int, AfterValidator(is_positive)]
-PositiveFloat = Annotated[float, AfterValidator(is_positive)]
+from ahcore.utils.types import PositiveFloat, PositiveInt
 
 
 class ImageMetadata(BaseModel):
     class Config:
-        allow_mutation = False
+        frozen = True
 
     filename: Path
     height: PositiveInt

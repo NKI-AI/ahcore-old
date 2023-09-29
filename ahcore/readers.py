@@ -1,4 +1,9 @@
-# encoding: utf-8
+"""
+Reader classes.
+
+- `H5FileImageReader`: to read files written using the `ahcore.writers.H5FileImageWriter`.
+
+"""
 import json
 import math
 from enum import Enum

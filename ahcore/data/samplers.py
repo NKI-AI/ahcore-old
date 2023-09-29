@@ -1,5 +1,5 @@
-# encoding: utf-8
-"""Module implementing the samplers. These are used for instance to create batches of the same WSI.
+"""
+Module implementing the samplers. These are used for instance to create batches of the same WSI.
 """
 from __future__ import annotations
 

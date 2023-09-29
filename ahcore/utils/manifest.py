@@ -1,9 +1,6 @@
 """
 All utilities to parse manifests into datasets. A manifest is a database containing the description of a dataset.
 See the documentation for more information and examples.
-
-TODO: Definitely imporove the logging here.
-
 """
 
 from __future__ import annotations
@@ -21,7 +18,7 @@ from dlup.tiling import GridOrder, TilingMode
 from pytorch_lightning.trainer.states import TrainerFn
 
 from ahcore.utils.data import DataDescription
-from ahcore.utils.database_models import Image, ImageAnnotations
+from ahcore.utils.database_models import Image, ImageAnnotations, Mask
 from ahcore.utils.io import get_logger
 from ahcore.utils.manifest_database import DataManager
 from ahcore.utils.rois import compute_rois
@@ -60,7 +57,7 @@ ImageBackends = Enum(value="ImageBackends", names=_ImageBackends_names)  # type:
 _Stages = Enum("Stages", [(_, _) for _ in ["fit", "validate", "test", "predict"]])  # type: ignore
 
 
-def parse_annotations_from_record(annotations_root: Path, record: list[ImageAnnotations]):
+def parse_annotations_from_record(annotations_root: Path, record: Mask | ImageAnnotations):
     """
     Parse the annotations from a record of type ImageAnnotations.
 

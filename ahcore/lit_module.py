@@ -1,8 +1,8 @@
-# encoding: utf-8
 """
 This module contains the core Lightning module for ahcore. This module is responsible for:
 - Training, Validation and Inference
-- Wrapping models"""
+- Wrapping models
+"""
 from __future__ import annotations
 
 from typing import Any

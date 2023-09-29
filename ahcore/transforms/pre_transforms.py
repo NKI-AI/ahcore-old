@@ -1,5 +1,5 @@
-# encoding: utf-8
-"""Module for the pre-transforms, which are the transforms that are applied before samples are outputted in a
+"""
+Module for the pre-transforms, which are the transforms that are applied before samples are outputted in a
 dataset."""
 from __future__ import annotations
 

@@ -1,8 +1,8 @@
-# encoding: utf-8
+"""Database models for ahcore's manifest database."""
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, func
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped
 
 
 class CategoryEnum(PyEnum):
@@ -22,7 +22,7 @@ class Manifest(Base):
     created = Column(DateTime(timezone=True), default=func.now())
     last_updated = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
-    patients = relationship("Patient", back_populates="manifest")
+    patients: Mapped["Patient"] = relationship("Patient", back_populates="manifest")
 
 
 class Patient(Base):
@@ -31,10 +31,10 @@ class Patient(Base):
     patient_code = Column(String, unique=True)
     manifest_id = Column(Integer, ForeignKey("manifest.id"))
 
-    manifest = relationship("Manifest", back_populates="patients")
-    images = relationship("Image", back_populates="patient")
-    labels = relationship("PatientLabels", back_populates="patient")
-    split = relationship("Split", uselist=False, back_populates="patient")
+    manifest: Mapped["Manifest"] = relationship("Manifest", back_populates="patients")
+    images: Mapped["Image"] = relationship("Image", back_populates="patient")
+    labels: Mapped["PatientLabels"] = relationship("PatientLabels", back_populates="patient")
+    split: Mapped["Split"] = relationship("Split", uselist=False, back_populates="patient")
 
 
 class Image(Base):
@@ -48,11 +48,11 @@ class Image(Base):
     width = Column(Integer)
     mpp = Column(Float)
 
-    patient = relationship("Patient", back_populates="images")
-    masks = relationship("Mask", back_populates="image")
-    annotations = relationship("ImageAnnotations", back_populates="image")
-    labels = relationship("ImageLabels", back_populates="image")
-    cache = relationship("ImageCache", uselist=False, back_populates="image")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="images")
+    masks: Mapped["Mask"] = relationship("Mask", back_populates="image")
+    annotations: Mapped["ImageAnnotations"] = relationship("ImageAnnotations", back_populates="image")
+    labels: Mapped["ImageLabels"] = relationship("ImageLabels", back_populates="image")
+    cache: Mapped["ImageCache"] = relationship("ImageCache", uselist=False, back_populates="image")
 
 
 class ImageCache(Base):
@@ -64,9 +64,9 @@ class ImageCache(Base):
     num_tiles = Column(Integer)
     image_id = Column(Integer, ForeignKey("image.id"))
 
-    image = relationship("Image", back_populates="cache")
+    image: Mapped["Image"] = relationship("Image", back_populates="cache")
     description_id = Column(Integer, ForeignKey("cache_description.id"))
-    description = relationship("CacheDescription", back_populates="caches")
+    description: Mapped["CacheDescription"] = relationship("CacheDescription", back_populates="caches")
 
 
 class CacheDescription(Base):
@@ -83,7 +83,7 @@ class CacheDescription(Base):
     mask_threshold = Column(Float)
     grid_order = Column(String)
 
-    caches = relationship("ImageCache", back_populates="description")
+    caches: Mapped["ImageCache"] = relationship("ImageCache", back_populates="description")
 
 
 class Mask(Base):
@@ -93,7 +93,7 @@ class Mask(Base):
     reader = Column(String)
     image_id = Column(Integer, ForeignKey("image.id"))
 
-    image = relationship("Image", back_populates="masks")
+    image: Mapped["Image"] = relationship("Image", back_populates="masks")
 
 
 class ImageAnnotations(Base):
@@ -103,7 +103,7 @@ class ImageAnnotations(Base):
     reader = Column(String)
     image_id = Column(Integer, ForeignKey("image.id"))
 
-    image = relationship("Image", back_populates="annotations")
+    image: Mapped["Image"] = relationship("Image", back_populates="annotations")
 
 
 class ImageLabels(Base):
@@ -112,7 +112,7 @@ class ImageLabels(Base):
     label_data = Column(String)  # e.g. "cancer" or "benign"
     image_id = Column(Integer, ForeignKey("image.id"))
 
-    image = relationship("Image", back_populates="labels")
+    image: Mapped["Image"] = relationship("Image", back_populates="labels")
 
 
 class PatientLabels(Base):
@@ -125,7 +125,7 @@ class PatientLabels(Base):
     # Add a unique constraint
     __table_args__ = (UniqueConstraint("key", "patient_id", name="uq_patient_label_key"),)
 
-    patient = relationship("Patient", back_populates="labels")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="labels")
 
 
 class SplitDefinitions(Base):
@@ -133,7 +133,7 @@ class SplitDefinitions(Base):
     id = Column(Integer, primary_key=True)
     version = Column(String, nullable=False)
     description = Column(String)
-    splits = relationship("Split", back_populates="split_definition")
+    splits: Mapped["Split"] = relationship("Split", back_populates="split_definition")
 
 
 class Split(Base):
@@ -143,6 +143,6 @@ class Split(Base):
     category: Column = Column(Enum(CategoryEnum), nullable=False)
     patient_id = Column(Integer, ForeignKey("patient.id"))
 
-    patient = relationship("Patient", back_populates="split")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="split")
     split_definition_id = Column(Integer, ForeignKey("split_definitions.id"))
-    split_definition = relationship("SplitDefinitions", back_populates="splits")
+    split_definition: Mapped["SplitDefinitions"] = relationship("SplitDefinitions", back_populates="splits")

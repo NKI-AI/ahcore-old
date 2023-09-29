@@ -1,4 +1,3 @@
-# encoding: utf-8
 """Utilities to work with regions-of-interest. Has utilities to compute balanced ROIs from masks"""
 from __future__ import annotations
 

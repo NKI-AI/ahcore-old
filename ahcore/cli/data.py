@@ -1,4 +1,3 @@
-# encoding: utf-8
 """Module to write copy manifests files over to SCRATCH directory"""
 import argparse
 import hashlib

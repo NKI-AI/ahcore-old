@@ -1,5 +1,3 @@
-# coding=utf-8
-# Copyright (c) dlup contributors
 """Ahcore Command-line interface. This is the file which builds the main parser."""
 from __future__ import annotations
 
@@ -70,6 +68,12 @@ def main() -> None:
 
     # Data related commands.
     register_data_subcommand(root_subparsers)
+
+    # Prevent circular import
+    from ahcore.cli.tiling import register_parser as register_tiling_subcommand
+
+    # Tiling related commands
+    register_tiling_subcommand(root_subparsers)
 
     args = root_parser.parse_args()
     args.subcommand(args)

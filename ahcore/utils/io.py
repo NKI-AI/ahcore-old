@@ -1,4 +1,3 @@
-# encoding: utf-8
 """Input/ Output utils.
 
 A part of the functions in this module are derived/taken from pytorch lightning template at:

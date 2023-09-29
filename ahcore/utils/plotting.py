@@ -1,4 +1,3 @@
-# encoding: utf-8
 """Plotting utilities for logging."""
 from __future__ import annotations
 

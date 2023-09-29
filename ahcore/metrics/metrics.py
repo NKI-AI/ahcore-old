@@ -1,4 +1,3 @@
-# encoding: utf-8
 """Metrics module, including factory.
 """
 from __future__ import annotations
@@ -269,7 +268,8 @@ class WSIDiceMetric(WSIMetric):
 
     @staticmethod
     def static_average_wsi_dice(precomputed_output: list[list[dict[str, dict[str, float]]]]) -> dict[str, float]:
-        "Static method to compute the average WSI dice score over a list of WSI dice scores, useful for multiprocessing."
+        """Static method to compute the average WSI dice score over a list of WSI dice scores,
+        useful for multiprocessing."""
         # Initialize defaultdicts to handle the sum and count of dice scores for each class
         class_sum: dict[str, float] = defaultdict(float)
         class_count: dict[str, int] = defaultdict(int)

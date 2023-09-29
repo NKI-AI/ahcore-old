@@ -1,14 +1,11 @@
-# encoding: utf-8
 """Utility to create tiles from the TCGA FFPE H&E slides.
 
-Other models uses 0.5um/pixel at 224 x 224 size.
+Many models uses 0.5um/pixel at 224 x 224 size.
 """
-
 from __future__ import annotations
 
 import argparse
 import io
-import logging
 from dataclasses import asdict, dataclass
 from functools import partial
 from logging import getLogger
@@ -31,15 +28,6 @@ from ahcore.cli import dir_path, file_path
 from ahcore.writers import H5FileImageWriter
 
 logger = getLogger(__name__)
-import sys
-
-logger.setLevel(logging.DEBUG)
-
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 
 def read_mask(path: Path) -> np.ndarray:
@@ -240,9 +228,9 @@ def save_tiles(
     h5_writer.consume(generator)
 
 
-def tiling_pipeline(
+def _tiling_pipeline(
     image_path: Path,
-    mask_path: Path,
+    mask_path: Path | None,
     output_file: Path,
     dataset_cfg: DatasetConfigs,
     quality: int,
@@ -252,7 +240,7 @@ def tiling_pipeline(
 
     try:
         # TODO: Come up with a way to inject the mask later on as well.
-        mask = read_mask(mask_path)
+        mask = read_mask(mask_path) if mask_path else None
         dataset = create_slide_image_dataset(
             slide_image_path=image_path,
             mask=mask,
@@ -282,71 +270,13 @@ def tiling_pipeline(
     logger.debug("Working on %s. Writing to %s", image_path, output_file)
 
 
-def wrapper(dataset_cfg, quality, save_thumbnail, args):
+def _wrapper(dataset_cfg, quality, save_thumbnail, args):
     image_path, mask_path, output_file = args
-    return tiling_pipeline(image_path, mask_path, output_file, dataset_cfg, quality, save_thumbnail)
+    return _tiling_pipeline(image_path, mask_path, output_file, dataset_cfg, quality, save_thumbnail)
 
 
-def main():
-    parser = argparse.ArgumentParser("Tiling of whole slide images.")
-    # Assume a comma separated format from image_file,mask_file
-    parser.add_argument(
-        "--file-list",
-        type=file_path,
-        required=True,
-        help="Path to the file list. Each comma-separated line is of the form `<image_fn>,<mask_fn>,<output_directory>`"
-        " where the output directory is with request to --output-dir",
-    )
-    parser.add_argument(
-        "--output-directory",
-        type=dir_path(require_writable=True),
-        required=True,
-        help="Path to the output file",
-    )
-    parser.add_argument(
-        "--mpp",
-        type=float,
-        required=True,
-        help="Resolution (microns per pixel) at which the slides should be tiled.",
-    )
-    parser.add_argument("--tile-size", type=int, required=True, help="Size of the tiles in pixels.")
-    parser.add_argument(
-        "--tile-overlap",
-        type=int,
-        default=0,
-        help="Overlap of the tile in pixels (default=0).",
-    )
-    parser.add_argument(
-        "--mask-threshold",
-        type=float,
-        default=0.6,
-        help="0 every tile is discarded, 1 requires the whole tile to be foreground (default=0.6).",
-    )
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        default=8,
-        help="Number of workers to use for tiling. 0 disables the tiling (default: 8)",
-    )
-    parser.add_argument(
-        "--save-thumbnail",
-        action="store_true",
-        help="Save a thumbnail of the slide, including the filtered tiles and the mask itself.",
-    )
-    parser.add_argument(
-        "--simple-check",
-        action="store_true",
-        help="Filter the list based on if the h5 images already exist.",
-    )
-    parser.add_argument(
-        "--quality",
-        type=int,
-        default=80,
-        help="Quality of the saved tiles in jpg, otherwise png (default: 80)",
-    )
-
-    args = parser.parse_args()
-    images_list = []
+def _do_tiling(args: argparse.Namespace):
+    images_list: list[tuple[Path, Path | None, Path]] = []
 
     with open(args.file_list, "r") as file_list:
         for line in file_list:
@@ -355,10 +285,12 @@ def main():
             image_file, mask_file, output_filename = line.split(",")
             if (args.output_directory / "data" / Path(output_filename.strip())).is_file() and args.simple_check:
                 continue
+
+            mask_fn = Path(mask_file.strip()) if mask_file != "" else None
             images_list.append(
                 (
                     Path(image_file.strip()),
-                    Path(mask_file.strip()),
+                    mask_fn,
                     args.output_directory / "data" / Path(output_filename.strip()),
                 )
             )
@@ -393,7 +325,7 @@ def main():
         # Convert list of tuples into list of lists
         images_list = [list(item) for item in images_list]
         # Create a partially applied function with dataset_cfg
-        partial_wrapper = partial(wrapper, dataset_cfg, args.quality, args.save_thumbnail)
+        partial_wrapper = partial(_wrapper, dataset_cfg, args.quality, args.save_thumbnail)
 
         with Progress() as progress:
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
@@ -404,7 +336,7 @@ def main():
         with Progress() as progress:
             task = progress.add_task("[cyan]Tiling...", total=len(images_list))
             for idx, (image_path, mask_path, output_file) in enumerate(images_list):
-                tiling_pipeline(
+                _tiling_pipeline(
                     image_path,
                     mask_path,
                     output_file,
@@ -415,5 +347,72 @@ def main():
                 progress.update(task, advance=1)
 
 
-if __name__ == "__main__":
-    main()
+def register_parser(parser: argparse._SubParsersAction):
+    """Register inspect commands to a root parser."""
+    tiling_parser = parser.add_parser("tiling", help="Tiling utilities")
+    tiling_subparsers = tiling_parser.add_subparsers(help="Tiling subparser")
+    tiling_subparsers.required = True
+    tiling_subparsers.dest = "subcommand"
+
+    _parser: argparse.ArgumentParser = tiling_subparsers.add_parser(
+        "tile-to-h5",
+        help="Tiling WSI images to h5",
+    )
+
+    # Assume a comma separated format from image_file,mask_file
+    _parser.add_argument(
+        "--file-list",
+        type=file_path,
+        required=True,
+        help="Path to the file list. Each comma-separated line is of the form `<image_fn>,<mask_fn>,<output_directory>`"
+        " where the output directory is with request to --output-dir. mask_fn can be empty.",
+    )
+    _parser.add_argument(
+        "--output-directory",
+        type=dir_path(require_writable=True),
+        required=True,
+        help="Path to the output directory.",
+    )
+    _parser.add_argument(
+        "--mpp",
+        type=float,
+        required=True,
+        help="Resolution (microns per pixel) at which the slides should be tiled.",
+    )
+    _parser.add_argument("--tile-size", type=int, required=True, help="Size of the tiles in pixels.")
+    _parser.add_argument(
+        "--tile-overlap",
+        type=int,
+        default=0,
+        help="Overlap of the tile in pixels (default=0).",
+    )
+    _parser.add_argument(
+        "--mask-threshold",
+        type=float,
+        default=0.6,
+        help="0 every tile is discarded, 1 requires the whole tile to be foreground (default=0.6).",
+    )
+    _parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=8,
+        help="Number of workers to use for tiling. 0 disables the tiling (default: 8)",
+    )
+    _parser.add_argument(
+        "--save-thumbnail",
+        action="store_true",
+        help="Save a thumbnail of the slide, including the filtered tiles and the mask itself.",
+    )
+    _parser.add_argument(
+        "--simple-check",
+        action="store_true",
+        help="Filter the list based on if the h5 images already exist.",
+    )
+    _parser.add_argument(
+        "--quality",
+        type=int,
+        default=80,
+        help="Quality of the saved tiles in jpg, otherwise png (default: 80)",
+    )
+
+    _parser.set_defaults(subcommand=_do_tiling)

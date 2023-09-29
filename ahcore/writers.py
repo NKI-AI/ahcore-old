@@ -1,4 +1,11 @@
-# encoding: utf-8
+"""
+This module contains writer classes. Currently implemented:
+
+- `H5FileImageWriter`: class to write H5 files based on iterators, for instance, the output of a dataset
+  class. Can for instance be used to store outputs of models. The `readers` contain separate modules to read these
+  h5 files.
+
+"""
 import json
 from multiprocessing.connection import Connection
 from pathlib import Path
