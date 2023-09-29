@@ -657,7 +657,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._data_manager = None
         self._validate_filenames_gen = None
 
-        self._validate_metadata_gen = None
+        self._validate_metadata_gen: Generator[ImageMetadata, None, None] | None = None
 
         self._dump_list: list[dict[str, str]] = []
         self._logger = get_logger(type(self).__name__)
@@ -715,12 +715,8 @@ class ComputeWsiMetricsCallback(Callback):
             yield image_metadata
 
     @property
-    def _validate_metadata(self) -> Generator[ImageMetadata, None, None]:
+    def _validate_metadata(self) -> Generator[ImageMetadata, None, None] | None:
         return self._validate_metadata_gen
-
-    @property
-    def metrics(self):
-        return self._metrics
 
     def on_validation_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         self._validate_metadata_gen = self._create_validate_image_metadata_gen()
@@ -747,6 +743,7 @@ class ComputeWsiMetricsCallback(Callback):
     def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         assert self._dump_dir
         assert self._data_description
+        assert self._validate_metadata
         metrics = []
 
         with multiprocessing.Pool(processes=self._max_processes) as pool:

@@ -3,7 +3,7 @@
 """The setup script."""
 import ast
 
-from setuptools import find_packages, setup  # type: ignore
+from setuptools import find_packages, setup  # noqa
 
 with open("ahcore/__init__.py") as f:
     for line in f:

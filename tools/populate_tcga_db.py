@@ -106,9 +106,7 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
 
 
 if __name__ == "__main__":
-    annotation_folder = Path(
-        "/data/groups/aiforoncology/derived/pathology/TCGA/gdc_manifest.2021-11-01_diagnostic_breast.txt/tissue_subtypes/v20230228_combined/"
-    )
+    annotation_folder = Path("tissue_subtypes/v20230228_combined/")
     image_folder = Path("/data/groups/aiforoncology/archive/pathology/TCGA/images/")
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
     with open_db("manifest.db") as session:

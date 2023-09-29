@@ -57,7 +57,7 @@ ImageBackends = Enum(value="ImageBackends", names=_ImageBackends_names)  # type:
 _Stages = Enum("Stages", [(_, _) for _ in ["fit", "validate", "test", "predict"]])  # type: ignore
 
 
-def parse_annotations_from_record(annotations_root: Path, record: Mask | ImageAnnotations):
+def parse_annotations_from_record(annotations_root: Path, record: list[Mask] | list[ImageAnnotations]):
     """
     Parse the annotations from a record of type ImageAnnotations.
 
@@ -133,9 +133,8 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
         split_version=data_description.split_version,
         split_category=stage,
     )
-
     for record in records:
-        labels = [(label.key, label.value) for label in record.labels] if record.labels else None
+        labels = [(str(label.key), str(label.value)) for label in record.labels] if record.labels else None
 
         for image in record.images:
             mask, annotations = get_mask_and_annotations_from_record(annotations_root, image)
@@ -153,11 +152,11 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
                 mask=mask,
                 mask_threshold=mask_threshold,
                 output_tile_size=getattr(grid_description, "output_tile_size", None),
-                rois=rois,  # type: ignore
+                rois=rois,
                 annotations=annotations if stage != TrainerFn.PREDICTING else None,
-                labels=labels,
+                labels=labels,  # type: ignore
                 transform=transform,
-                backend=ImageBackend[image.reader],
+                backend=ImageBackend[str(image.reader)],
                 overwrite_mpp=(image.mpp, image.mpp),
                 limit_bounds=False if rois is not None else True,
             )

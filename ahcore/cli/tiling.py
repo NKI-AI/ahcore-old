@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import io
-from dataclasses import asdict, dataclass
 from functools import partial
 from logging import getLogger
 from multiprocessing import Pool
@@ -18,7 +17,7 @@ import numpy as np
 import numpy.typing as npt
 import PIL.Image
 from dlup import SlideImage
-from dlup.data.dataset import RegionFromSlideDatasetSample, TiledROIsSlideImageDataset
+from dlup.data.dataset import TiledROIsSlideImageDataset
 from dlup.tiling import GridOrder, TilingMode
 from PIL import Image
 from pydantic import BaseModel
