@@ -99,8 +99,8 @@ class DatasetConfigs(BaseModel):
 def _save_thumbnail(
     image_fn: Path,
     dataset_cfg: DatasetConfigs,
-    mask: npt.NDArray[np.uint8],
-) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8], npt.NDArray[np.uint8]]:
+    mask: npt.NDArray[np.uint8] | None,
+) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8] | None, npt.NDArray[np.uint8]]:
     target_mpp = max(dataset_cfg.mpp * 30, 30)
     tile_size = (
         min(30, dataset_cfg.tile_size[0] // 30),
@@ -117,25 +117,30 @@ def _save_thumbnail(
     )
     scaled_region_view = dataset.slide_image.get_scaled_view(dataset.slide_image.get_scaling(target_mpp))
 
-    # Let us write the mask too.
-    mask_io = io.BytesIO()
-    mask = PIL.Image.fromarray(mask * 255, mode="L")
-    mask.save(mask_io, quality=75)
-    mask_arr = np.frombuffer(mask_io.getvalue(), dtype="uint8")
+    if mask is not None:
+        # Let us write the mask too.
+        mask_io = io.BytesIO()
+        pil_mask = PIL.Image.fromarray(mask * 255, mode="L")
+        pil_mask.save(mask_io, quality=75)
+        mask_arr = np.frombuffer(mask_io.getvalue(), dtype="uint8")
+    else:
+        mask_arr = None
 
     thumbnail_io = io.BytesIO()
     thumbnail = dataset.slide_image.get_thumbnail(tuple(scaled_region_view.size))
     thumbnail.convert("RGB").save(thumbnail_io, quality=75)
     thumbnail_arr = np.frombuffer(thumbnail_io.getvalue(), dtype="uint8")
 
-    background = Image.new("RGBA", tuple(scaled_region_view.size), (255, 255, 255, 255))
+    region_size = tuple(scaled_region_view.size)
+    background = Image.new("RGBA", (region_size[0], region_size[1]), (255, 255, 255, 255))
 
     overlay_io = io.BytesIO()
     for d in dataset:
         tile = d["image"]
         coords = np.array(d["coordinates"])
         box = tuple(np.array((*coords, *(coords + tile_size))).astype(int))
-        background.paste(tile, box)
+        background.paste(tile, (box[0], box[1]))
+        # You could uncomment this to plot the boxes of the grid as well, but this can quickly become crowded.
         # draw = ImageDraw.Draw(background)
         # draw.rectangle(box, outline="red")
     background.convert("RGB").save(overlay_io, quality=75)
@@ -261,7 +266,13 @@ def _tiling_pipeline(
         if save_thumbnail:
             thumbnail, mask, overlay = _save_thumbnail(image_path, dataset_cfg, mask)
 
-            h5_writer.add_associated_images(("thumbnail", thumbnail), ("mask", mask), ("overlay", overlay))
+            if mask is not None:
+                h5_writer.add_associated_images(
+                    images=(("thumbnail", thumbnail), ("mask", mask), ("overlay", overlay)),
+                    description="thumbnail, mask and overlay",
+                )
+            else:
+                h5_writer.add_associated_images(images=(("thumbnail", thumbnail),), description="thumbnail")
 
     except Exception as e:
         logger.error(f"Failed: {image_path} with exception {e}")
@@ -322,8 +333,6 @@ def _do_tiling(args: argparse.Namespace):
     logger.info(f"Dataset configurations: {pformat(dataset_cfg)}")
 
     if args.num_workers > 0:
-        # Convert list of tuples into list of lists
-        images_list = [list(item) for item in images_list]
         # Create a partially applied function with dataset_cfg
         partial_wrapper = partial(_wrapper, dataset_cfg, args.quality, args.save_thumbnail)
 
