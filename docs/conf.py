@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.abspath(".."))
 
 from typing import Dict, List  # noqa: E402
+
 import ahcore  # noqa: E402
 
 # -- General configuration ---------------------------------------------

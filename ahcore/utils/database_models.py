@@ -2,7 +2,7 @@
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, func
-from sqlalchemy.orm import DeclarativeBase, relationship, Mapped
+from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
 
 
 class CategoryEnum(PyEnum):

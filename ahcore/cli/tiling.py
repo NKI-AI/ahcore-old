@@ -34,8 +34,7 @@ def read_mask(path: Path) -> np.ndarray:
     return iio.imread(path)[..., 0]
 
 
-@dataclass
-class SlideImageMetaData:
+class SlideImageMetaData(BaseModel):
     """Metadata of a whole slide image."""
 
     path: Path
@@ -56,31 +55,18 @@ class SlideImageMetaData:
         )
 
     def __iter__(self):
-        for k, v in asdict(self).items():
+        for k, v in self.model_dump().items():
             yield k, v
 
 
-@dataclass()
-class TileMetaData:
-    """Metadata of a tile."""
-
+class TileMetaData(BaseModel):
     coordinates: tuple[int, int]
     region_index: int
     grid_local_coordinates: tuple[int, int]
     grid_index: int
 
-    @classmethod
-    def from_sample(cls, sample: RegionFromSlideDatasetSample):
-        _relevant_keys = [
-            "coordinates",
-            "region_index",
-            "grid_local_coordinates",
-            "grid_index",
-        ]
-        return cls(**{k: v for k, v in sample.items() if k in _relevant_keys})
-
     def __iter__(self):
-        for k, v in asdict(self).items():
+        for k, v in self.model_dump().items():
             yield k, v
 
 
