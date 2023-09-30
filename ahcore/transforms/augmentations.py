@@ -19,32 +19,6 @@ from ahcore.utils.io import get_logger
 logger = get_logger(__name__)
 
 
-def cast_list_to_tensor(obj, default=0.0):
-    """
-    Converts a list to a tensor
-
-    Parameters
-    ----------
-    obj : Any
-    default : float
-        Default value
-    Returns
-    -------
-    torch.Tensor
-    """
-    if obj is None:
-        obj = [default] * 3
-
-    if isinstance(obj, (float, int)):
-        obj = [float(obj)] * 3
-
-    # TODO: Figure out why ListConfig is needed.
-    if isinstance(obj, (list, tuple, ListConfig)):
-        obj = torch.Tensor(obj)[:, None, None]
-
-    return obj
-
-
 class MeanStdNormalizer(nn.Module):
     """
     Normalizes the mean and standard deviation of the input image. Assumes the original range is `[0, 255]`.

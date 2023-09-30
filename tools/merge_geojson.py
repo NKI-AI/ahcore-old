@@ -10,7 +10,7 @@ from pathlib import Path
 from dlup.annotations import WsiAnnotations
 
 
-def convert_to_combined(path: Path) -> dict:
+def convert_to_combined(path: Path):
     """
     Convert a single geojson file to the combined format.
     """

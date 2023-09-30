@@ -32,4 +32,4 @@ def main(config: DictConfig):
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pylint: disable=no-value-for-parameter

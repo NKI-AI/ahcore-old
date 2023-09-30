@@ -34,8 +34,7 @@ from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.data import DataDescription, GridDescription
 from ahcore.utils.io import get_logger
-from ahcore.utils.manifest import get_mask_and_annotations_from_record
-from ahcore.utils.manifest_database import DataManager, ImageMetadata, fetch_image_metadata
+from ahcore.utils.manifest import DataManager, ImageMetadata, fetch_image_metadata, get_mask_and_annotations_from_record
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)

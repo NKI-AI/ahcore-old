@@ -42,6 +42,7 @@ def crop_to_bbox(array, bbox):
 
 
 def paste_region(array, region, location, paste_mode=PasteMode.OVERWRITE):
+    # TODO: Unused function.
     x, y = location
     h, w = region.shape[:2]
 

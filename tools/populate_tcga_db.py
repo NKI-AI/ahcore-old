@@ -16,7 +16,7 @@ from ahcore.utils.database_models import (
     Split,
     SplitDefinitions,
 )
-from ahcore.utils.manifest_database import open_db
+from ahcore.utils.manifest import open_db
 
 
 def get_patient_from_tcga_id(tcga_filename: str) -> str:
@@ -78,7 +78,9 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
         ):
             kwargs["overwrite_mpp"] = (0.25, 0.25)
 
-        with SlideImage.from_file_path(image_folder / filename, backend=ImageBackend.PYVIPS, **kwargs) as slide:
+        with SlideImage.from_file_path(
+            image_folder / filename, backend=ImageBackend.PYVIPS, **kwargs  # type: ignore
+        ) as slide:  # type: ignore
             mpp = slide.mpp
             width, height = slide.size
             image = Image(

@@ -3,7 +3,7 @@
 """The setup script."""
 import ast
 
-from setuptools import find_packages, setup  # noqa
+from setuptools import find_packages, setup  # type: ignore  # noqa
 
 with open("ahcore/__init__.py") as f:
     for line in f:
@@ -61,8 +61,8 @@ setup(
         "dev": [
             "pytest",
             "numpydoc",
-            "pylint",
-            "black==23.7.0",
+            "pylint==2.17.7",
+            "black==23.9.1",
             "types-Pillow",
             "sphinx",
             "sphinx_copybutton",

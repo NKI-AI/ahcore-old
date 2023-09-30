@@ -3,6 +3,7 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Callable, Iterator
 
 import numpy as np
@@ -13,10 +14,9 @@ from pytorch_lightning.trainer.states import TrainerFn
 from torch.utils.data import DataLoader, Sampler
 
 import ahcore.data.samplers
-from ahcore.utils.data import DataDescription, dataclass_to_uuid
+from ahcore.utils.data import DataDescription, basemodel_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
-from ahcore.utils.manifest import datasets_from_data_description
-from ahcore.utils.manifest_database import DataManager
+from ahcore.utils.manifest import DataManager, datasets_from_data_description
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -229,18 +229,18 @@ class DlupDataModule(pl.LightningDataModule):
         self._data_manager.close()
 
     @property
-    def uuid(self) -> str:
+    def uuid(self) -> uuid.UUID:
         """This property is used to create a unique cache file for each dataset. The constructor of this dataset
         is completely determined by the data description, including the pre_transforms. Therefore, we can use the
         data description to create an uuid that is unique for each datamodule.
 
-        The uuid is computed by hashing the data description using the `dataclass_to_uuid` function, which uses
-        a sha256 hash of the pickled object. As pickles can change with python versions, this uuid will be different
-        when using different python versions.
+        The uuid is computed by hashing the data description using the `basemodel_to_uuid` function, which uses
+        a sha256 hash of the pickled object and converts it to an UUID.
+        As pickles can change with python versions, this uuid will be different when using different python versions.
 
         Returns
         -------
         str
             A unique identifier for this datamodule.
         """
-        return dataclass_to_uuid(self.data_description)
+        return basemodel_to_uuid(self.data_description)

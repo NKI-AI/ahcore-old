@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.progress import Progress
 
 from ahcore.cli import dir_path
-from ahcore.utils.manifest_database import DataManager
+from ahcore.utils.manifest import DataManager
 
 
 def _quick_hash(file_path: Path, max_bytes: int = 10**6) -> str:
