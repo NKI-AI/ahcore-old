@@ -6,10 +6,9 @@ See the documentation for more information and examples.
 from __future__ import annotations
 
 import functools
-from enum import Enum
 from pathlib import Path
 from types import TracebackType
-from typing import Callable, Generator, Literal, Optional, Type, TypedDict
+from typing import Callable, Generator, Literal, Optional, Type, TypedDict, cast
 
 from dlup import SlideImage
 from dlup.annotations import WsiAnnotations
@@ -68,7 +67,13 @@ def parse_annotations_from_record(annotations_root: Path, record: list[Mask] | l
         return
     assert len(record) == 1
 
-    reader_name = record[0].reader
+    valid_readers = list(_AnnotationReaders.keys())
+    reader_name = cast(Literal["ASAP_XML", "GEOJSON", "PYVIPS", "TIFFFILE", "OPENSLIDE"], record[0].reader)
+
+    if reader_name not in valid_readers:
+        raise ValueError(f"Invalid reader: {record[0].reader}")
+    assert reader_name in valid_readers
+
     filename = record[0].filename
 
     try:
@@ -268,7 +273,9 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
     image_root = data_description.data_dir
     annotations_root = data_description.annotations_dir
 
-    if stage == TrainerFn.FITTING:
+    assert isinstance(stage, str), "Stage should be a string."
+
+    if stage == "fit":
         grid_description = data_description.training_grid
     else:
         grid_description = data_description.inference_grid

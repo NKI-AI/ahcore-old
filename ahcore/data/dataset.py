@@ -3,7 +3,7 @@ Utilities to construct datasets and DataModule's from manifests.
 """
 from __future__ import annotations
 
-import uuid
+import uuid as uuid_module
 from typing import Callable, Iterator
 
 import numpy as np
@@ -229,7 +229,7 @@ class DlupDataModule(pl.LightningDataModule):
         self._data_manager.close()
 
     @property
-    def uuid(self) -> uuid.UUID:
+    def uuid(self) -> uuid_module.UUID:
         """This property is used to create a unique cache file for each dataset. The constructor of this dataset
         is completely determined by the data description, including the pre_transforms. Therefore, we can use the
         data description to create an uuid that is unique for each datamodule.
