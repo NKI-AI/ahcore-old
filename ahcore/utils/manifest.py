@@ -28,6 +28,8 @@ from ahcore.utils.types import PositiveFloat, PositiveInt
 
 logger = get_logger(__name__)
 
+_AnnotationReturnTypes = WsiAnnotations | SlideImage
+
 
 class _AnnotationReadersDict(TypedDict):
     ASAP_XML: Callable[[Path], WsiAnnotations]
@@ -48,7 +50,7 @@ _AnnotationReaders: _AnnotationReadersDict = {
 
 def parse_annotations_from_record(
     annotations_root: Path, record: list[Mask] | list[ImageAnnotations]
-) -> WsiAnnotations | SlideImage:
+) -> _AnnotationReturnTypes:
     """
     Parse the annotations from a record of type ImageAnnotations.
 
@@ -85,7 +87,9 @@ def parse_annotations_from_record(
     return reader_func(annotations_root / filename)
 
 
-def get_mask_and_annotations_from_record(annotations_root: Path, record: Image):
+def get_mask_and_annotations_from_record(
+    annotations_root: Path, record: Image
+) -> tuple[_AnnotationReturnTypes, _AnnotationReturnTypes]:
     """
     Get the mask and annotations from a record of type Image.
 

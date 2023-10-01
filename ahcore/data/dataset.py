@@ -18,6 +18,9 @@ from ahcore.utils.data import DataDescription, basemodel_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import DataManager, datasets_from_data_description
 
+_DlupDatasetSample = dict[str, Any]
+_DlupDataset = Dataset[_DlupDatasetSample]
+
 
 class DlupDataModule(pl.LightningDataModule):
     """Datamodule for the Ahcore framework. This datamodule is based on `dlup`."""
@@ -91,10 +94,10 @@ class DlupDataModule(pl.LightningDataModule):
         self._persistent_workers = persistent_workers
         self._pin_memory = pin_memory
 
-        self._fit_data_iterator: Iterator[Dataset] | None = None
-        self._validate_data_iterator: Iterator[Dataset] | None = None
-        self._test_data_iterator: Iterator[Dataset] | None = None
-        self._predict_data_iterator: Iterator[Dataset] | None = None
+        self._fit_data_iterator: Iterator[_DlupDataset] | None = None
+        self._validate_data_iterator: Iterator[_DlupDataset] | None = None
+        self._test_data_iterator: Iterator[_DlupDataset] | None = None
+        self._predict_data_iterator: Iterator[_DlupDataset] | None = None
 
         # Variables to keep track if a dataset has already be constructed (it's a slow operation)
         self._already_called: dict[str, bool] = {
@@ -118,7 +121,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._logger.info("Constructing dataset iterator for stage %s", stage)
 
-        def dataset_iterator() -> Iterator[Dataset]:
+        def dataset_iterator() -> Iterator[_DlupDataset]:
             gen = datasets_from_data_description(
                 db_manager=self._data_manager,
                 data_description=self.data_description,
@@ -130,11 +133,13 @@ class DlupDataModule(pl.LightningDataModule):
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
-    def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: str) -> Optional[DataLoader]:
+    def _construct_concatenated_dataloader(
+        self, data_iterator, batch_size: int, stage: str
+    ) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not data_iterator:
             return None
 
-        def construct_dataset() -> ConcatDataset:
+        def construct_dataset() -> ConcatDataset[_DlupDatasetSample]:
             datasets = []
             for _, ds in enumerate(data_iterator):
                 datasets.append(ds)
@@ -153,7 +158,7 @@ class DlupDataModule(pl.LightningDataModule):
             f" - Max: {lengths.max():.2f}"
         )
 
-        batch_sampler: Sampler
+        batch_sampler: Sampler[list[int]]
         if stage == "fit":
             batch_sampler = torch.utils.data.BatchSampler(
                 torch.utils.data.RandomSampler(data_source=dataset, replacement=True),
@@ -194,7 +199,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         return obj
 
-    def train_dataloader(self) -> Optional[DataLoader]:
+    def train_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not self._fit_data_iterator:
             self.setup("fit")
         return self._construct_concatenated_dataloader(
@@ -203,7 +208,7 @@ class DlupDataModule(pl.LightningDataModule):
             stage="fit",
         )
 
-    def val_dataloader(self) -> Optional[DataLoader]:
+    def val_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not self._validate_data_iterator:
             self.setup("validate")
 
@@ -219,7 +224,7 @@ class DlupDataModule(pl.LightningDataModule):
             setattr(self, "val_concat_dataset", None)
         return val_dataloader
 
-    def test_dataloader(self) -> Optional[DataLoader]:
+    def test_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not self._test_data_iterator:
             self.setup("test")
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
