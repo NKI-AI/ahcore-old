@@ -28,7 +28,7 @@ class DlupDataModule(pl.LightningDataModule):
     def __init__(
         self,
         data_description: DataDescription,
-        pre_transform: Callable,
+        pre_transform,
         batch_size: int = 32,  # noqa,pylint: disable=unused-argument
         validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
         num_workers: int = 16,
@@ -134,7 +134,7 @@ class DlupDataModule(pl.LightningDataModule):
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
     def _construct_concatenated_dataloader(
-        self, data_iterator, batch_size: int, stage: str
+        self, data_iterator: Iterator[_DlupDataset], batch_size: int, stage: str
     ) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not data_iterator:
             return None
@@ -180,7 +180,7 @@ class DlupDataModule(pl.LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def _load_from_cache(self, func: Callable, stage: str, *args: Any, **kwargs: Any) -> Any:
+    def _load_from_cache(self, func: Callable[[], Any], stage: str, *args: Any, **kwargs: Any) -> Any:
         name = fullname(func)
         path = get_cache_dir() / stage / name
         filename = path / f"{self.uuid}.pkl"
@@ -202,6 +202,7 @@ class DlupDataModule(pl.LightningDataModule):
     def train_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
         if not self._fit_data_iterator:
             self.setup("fit")
+        assert self._fit_data_iterator
         return self._construct_concatenated_dataloader(
             self._fit_data_iterator,
             batch_size=self._batch_size,
@@ -213,6 +214,7 @@ class DlupDataModule(pl.LightningDataModule):
             self.setup("validate")
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
+        assert self._validate_data_iterator
         val_dataloader = self._construct_concatenated_dataloader(
             self._validate_data_iterator,
             batch_size=batch_size,
@@ -228,12 +230,14 @@ class DlupDataModule(pl.LightningDataModule):
         if not self._test_data_iterator:
             self.setup("test")
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
+        assert self._validate_data_iterator
         return self._construct_concatenated_dataloader(
             self._validate_data_iterator, batch_size=batch_size, stage="test"
         )
 
     def teardown(self, stage: str | None = None) -> None:
-        getattr(self, f"_{stage}_data_iterator").__del__()
+        if stage is not None:
+            getattr(self, f"_{stage}_data_iterator").__del__()
         self._data_manager.close()
 
     @property

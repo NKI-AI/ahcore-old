@@ -46,7 +46,7 @@ class PreTransformTaskFactory:
         cls, data_description: DataDescription, requires_target: bool = True
     ) -> PreTransformTaskFactory:
         """
-        Pretransforms for segmentation tasks. If the target is required these transforms are applied as follows:
+        Pre-transforms for segmentation tasks. If the target is required these transforms are applied as follows:
         - Labels are renamed (for instance if you wish to map several labels to on specific class)
         - `Polygon` and `Point` annotations are converted to a mask
         - The mask is one-hot encoded.

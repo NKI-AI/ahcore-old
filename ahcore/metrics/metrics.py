@@ -101,12 +101,12 @@ class MetricFactory:
         self._metrics = metrics
 
     @classmethod
-    def for_segmentation(cls, *args, **kwargs):
+    def for_segmentation(cls, *args: Any, **kwargs: Any) -> MetricFactory:
         dices = DiceMetric(*args, **kwargs)
         return cls([dices])
 
     @classmethod
-    def for_wsi_classification(cls, config):
+    def for_wsi_classification(cls, *args: Any, **kwargs: Any) -> MetricFactory:
         raise NotImplementedError
 
     @classmethod
@@ -295,10 +295,10 @@ class WSIDiceMetric(WSIMetric):
         }
         return avg_dice_scores
 
-    def reset(self):
+    def reset(self) -> None:
         self.wsis = {}
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}(num_classes={self._num_classes})"
 
 
@@ -313,16 +313,16 @@ class WSIMetricFactory:
         self._metrics = metrics
 
     @classmethod
-    def for_segmentation(cls, *args, **kwargs):
+    def for_segmentation(cls, *args: Any, **kwargs: Any) -> WSIMetricFactory:
         dices = WSIDiceMetric(*args, **kwargs)
         return cls([dices])
 
     @classmethod
-    def for_wsi_classification(cls, config):
+    def for_wsi_classification(cls, *args: Any, **kwargs: Any) -> WSIMetricFactory:
         raise NotImplementedError
 
     @classmethod
-    def for_tile_classification(cls, roi_name: str, label: str, threshold: float):
+    def for_tile_classification(cls, roi_name: str, label: str, threshold: float) -> WSIMetricFactory:
         raise NotImplementedError
 
     def process_batch(

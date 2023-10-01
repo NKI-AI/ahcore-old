@@ -197,7 +197,7 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 class CenterCrop(nn.Module):
     """Perform a center crop of the image and target"""
 
-    def __init__(self, size: int | tuple[int, int], **kwargs):
+    def __init__(self, size: int | tuple[int, int], **kwargs: Any) -> None:
         super().__init__()
         _size = size
         if isinstance(size, int):

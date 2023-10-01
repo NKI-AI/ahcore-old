@@ -101,7 +101,7 @@ class AhCoreLightningModule(pl.LightningModule):
         metrics = {f"{_stage}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
         return metrics
 
-    def do_step(self, batch, batch_idx: int, stage: TrainerFn | str):
+    def do_step(self, batch, batch_idx: int, stage: TrainerFn | str) -> dict[str, Any]:
         if self._augmentations and stage in self._augmentations:
             batch = self._augmentations[stage](batch)
 
@@ -130,6 +130,7 @@ class AhCoreLightningModule(pl.LightningModule):
         _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
         _metrics = self._compute_metrics(_prediction, _target, roi, stage=stage)
         _loss = loss.mean()
+        # TODO: This can be a TypedDict
         output = {
             "loss": _loss,
             "loss_per_sample": loss.clone().detach(),

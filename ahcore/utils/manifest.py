@@ -17,6 +17,7 @@ from dlup.experimental_backends import ImageBackend
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from ahcore.exceptions import RecordNotFoundError
@@ -24,7 +25,7 @@ from ahcore.utils.data import DataDescription
 from ahcore.utils.database_models import Base, Image, ImageAnnotations, Manifest, Mask, Patient, Split, SplitDefinitions
 from ahcore.utils.io import get_logger
 from ahcore.utils.rois import compute_rois
-from ahcore.utils.types import PositiveFloat, PositiveInt
+from ahcore.utils.types import PositiveFloat, PositiveInt, Rois
 
 logger = get_logger(__name__)
 
@@ -110,7 +111,7 @@ def get_mask_and_annotations_from_record(
     return _masks, _annotations
 
 
-def _get_rois(mask, data_description: DataDescription, stage: str):
+def _get_rois(mask: WsiAnnotations, data_description: DataDescription, stage: str) -> Optional[Rois]:
     if (mask is None) or (stage != "fit") or (not data_description.convert_mask_to_rois):
         return None
 
@@ -295,6 +296,7 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
 
         for image in record.images:
             mask, annotations = get_mask_and_annotations_from_record(annotations_root, image)
+            assert isinstance(mask, WsiAnnotations) or (mask is None)
             rois = _get_rois(mask, data_description, stage)
             mask_threshold = 0.0 if stage != "fit" else data_description.mask_threshold
 
@@ -309,7 +311,7 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
                 mask=mask,
                 mask_threshold=mask_threshold,
                 output_tile_size=getattr(grid_description, "output_tile_size", None),
-                rois=rois,
+                rois=tuple(rois) if rois is not None else None,
                 annotations=annotations if stage != "predict" else None,
                 labels=labels,  # type: ignore
                 transform=transform,
@@ -352,7 +354,7 @@ def open_db(database_uri: str) -> Session:
     return SessionLocal()
 
 
-def create_tables(engine) -> None:
+def create_tables(engine: Engine) -> None:
     """Create the database tables."""
     Base.metadata.create_all(bind=engine)
 

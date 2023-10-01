@@ -6,9 +6,7 @@ from dlup.annotations import WsiAnnotations
 from dlup.tiling import TilingMode, tiles_grid_coordinates
 
 from ahcore.utils.io import logger
-
-_Roi = tuple[tuple[int, int], tuple[int, int]]
-_Rois = list[_Roi]
+from ahcore.utils.types import Rois
 
 
 def compute_rois(
@@ -16,7 +14,7 @@ def compute_rois(
     tile_size: tuple[int, int],
     tile_overlap: tuple[int, int],
     centered: bool = True,
-) -> _Rois:
+) -> Rois:
     """
     Compute the ROIs from a `WsiAnnotations` object. The ROIs are computed by:
       1) The bounding box of the whole `mask` object is computed (by `dlup`).
@@ -60,7 +58,7 @@ def compute_rois(
     return rois
 
 
-def _get_centered_rois(roi_boxes: _Rois, tile_size: tuple[int, int], tile_overlap: tuple[int, int]) -> _Rois:
+def _get_centered_rois(roi_boxes: Rois, tile_size: tuple[int, int], tile_overlap: tuple[int, int]) -> Rois:
     """
     Based on the ROI and the effective region size compute a grid aligned at the center of the region
 
@@ -82,7 +80,7 @@ def _get_centered_rois(roi_boxes: _Rois, tile_size: tuple[int, int], tile_overla
     logger.debug("Computing balanced ROIs from ROI boxes %s", roi_boxes)
     region_sizes = [_compute_effective_size(roi_size, tile_size, tile_overlap) for _, roi_size in roi_boxes]
 
-    output_rois: _Rois = []
+    output_rois: Rois = []
     for roi, region_size in zip(roi_boxes, region_sizes):
         offset, size = roi
         _region_size = np.asarray(region_size)
@@ -99,7 +97,7 @@ def _compute_effective_size(
     size: tuple[int, int],
     tile_size: tuple[int, int],
     tile_overlap: tuple[int, int],
-    mode=TilingMode.overflow,
+    mode: TilingMode = TilingMode.overflow,
 ) -> tuple[int, int]:
     """
     Compute the effective size of a tiled region, depending on the tiling mode and given the size. The effective size

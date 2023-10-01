@@ -19,6 +19,8 @@ from ahcore.utils.io import get_logger
 
 logger = get_logger(__name__)
 
+_GenericArray = npt.NDArray[np.generic]
+
 
 class StitchingMode(Enum):
     CROP = 0
@@ -196,7 +198,7 @@ class H5FileImageReader:
 
         return rescaled_region
 
-    def read_region_raw(self, location: tuple[int, int], size: tuple[int, int]) -> npt.NDArray:
+    def read_region_raw(self, location: tuple[int, int], size: tuple[int, int]) -> _GenericArray:
         """
         Reads a region in the stored h5 file. This function stitches the regions as saved in the h5 file. Doing this
         it takes into account:

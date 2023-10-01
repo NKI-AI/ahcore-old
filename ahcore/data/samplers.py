@@ -4,9 +4,9 @@ Module implementing the samplers. These are used for instance to create batches 
 from __future__ import annotations
 
 import math
-from typing import List
+from typing import Generator, List
 
-from dlup.data.dataset import ConcatDataset
+from dlup.data.dataset import ConcatDataset, TiledROIsSlideImageDataset
 from torch.utils.data import Sampler
 
 from ahcore.utils.io import get_logger
@@ -15,7 +15,7 @@ logger = get_logger()
 
 
 class WsiBatchSampler(Sampler[List[int]]):
-    def __init__(self, dataset: ConcatDataset, batch_size: int) -> None:
+    def __init__(self, dataset: ConcatDataset[TiledROIsSlideImageDataset], batch_size: int) -> None:
         super().__init__(data_source=dataset)
         self._dataset = dataset
         self._batch_size = batch_size
@@ -29,7 +29,7 @@ class WsiBatchSampler(Sampler[List[int]]):
             slice_stop = self._dataset.cumulative_sizes[idx]
             self._slices.append(slice(slice_start, slice_stop))
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[List[int], None, None]:
         for slice_ in self._slices:
             batch = []
             # Within each slice, create batches of size self._batch_size

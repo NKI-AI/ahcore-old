@@ -12,7 +12,7 @@ from collections import namedtuple
 from multiprocessing import Pipe, Process, Queue, Semaphore
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any, Generator, Iterator, Optional, TypedDict, cast
+from typing import Any, Callable, Generator, Iterator, Optional, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -40,6 +40,8 @@ from ahcore.writers import H5FileImageWriter
 logger = get_logger(__name__)
 
 logging.getLogger("pyvips").setLevel(logging.ERROR)
+
+_GenericArray = npt.NDArray[np.generic]
 
 
 class _ValidationDataset(Dataset):
@@ -222,7 +224,7 @@ class _ValidationDataset(Dataset):
 
 
 class _WriterMessage(TypedDict):
-    queue: Queue
+    queue: Queue[Optional[tuple[Any, Any]]]  # pylint: disable=unsubscriptable-object
     writer: H5FileImageWriter
     process: Process
     connection: Connection
@@ -316,11 +318,11 @@ class WriteH5Callback(Callback):
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
-        outputs,
-        batch,
-        batch_idx,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
         dataloader_idx=0,
-    ):
+    ) -> None:
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
             raise ValueError(
@@ -395,7 +397,7 @@ class WriteH5Callback(Callback):
         self._writers[filename]["queue"].put((coordinates, prediction))
         self._validation_index += prediction.shape[0]
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if self._current_filename is not None:
             self.__process_management()
             self._semaphore.release()
@@ -406,7 +408,9 @@ class WriteH5Callback(Callback):
         self._writers = {}
 
     @staticmethod
-    def generator(queue: Queue):
+    def generator(
+        queue: Queue[Optional[_GenericArray]],  # pylint: disable=unsubscriptable-object
+    ) -> Generator[_GenericArray, None, None]:
         while True:
             batch = queue.get()
             if batch is None:
@@ -415,7 +419,11 @@ class WriteH5Callback(Callback):
 
 
 # Separate because this cannot be pickled.
-def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_function):
+def _iterator_from_reader(
+    h5_reader: H5FileImageReader,
+    tile_size: tuple[int, int],
+    tile_process_function: Callable[[_GenericArray], _GenericArray],
+):
     validation_dataset = _ValidationDataset(
         data_description=None,
         native_mpp=h5_reader.mpp,
@@ -430,7 +438,12 @@ def _iterator_from_reader(h5_reader: H5FileImageReader, tile_size, tile_process_
         yield region if tile_process_function is None else tile_process_function(region)
 
 
-def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reader):
+def _write_tiff(
+    filename: Path,
+    tile_size: tuple[int, int],
+    tile_process_function: Callable[[_GenericArray], _GenericArray],
+    _iterator_from_reader,
+):
     logger.debug("Writing TIFF %s", filename.with_suffix(".tiff"))
     with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
         writer = TifffileImageWriter(
@@ -445,7 +458,7 @@ def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reade
         writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
 
 
-def tile_process_function(x) -> npt.NDArray[np.uint8]:
+def tile_process_function(x: npt.NDArray[np.float_]) -> _GenericArray:
     return np.argmax(x, axis=0).astype(np.uint8)
 
 
@@ -498,7 +511,7 @@ class WriteTiffCallback(Callback):
         outputs: Any,
         batch: Any,
         batch_idx: int,
-        dataloader_idx=0,
+        dataloader_idx: int = 0,
     ) -> None:
         assert self.dump_dir, "dump_dir should never be None here."
 
@@ -572,7 +585,7 @@ def prepare_task_data(
 def compute_metrics_for_case(
     task_data: TaskData,
     class_names,
-    data_description,
+    data_description: DataDescription,
     wsi_metrics,
     save_per_image: bool,
 ) -> list[dict[str, Any]]:
@@ -626,7 +639,7 @@ def compute_metrics_for_case(
 def schedule_task(
     task_data: TaskData,
     pool,
-    results_dict: dict,
+    results_dict: dict[list[dict[str, Any]], str],
     class_names,
     data_description: DataDescription,
     wsi_metrics,
@@ -640,7 +653,7 @@ def schedule_task(
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_processes=10, save_per_image: bool = True) -> None:
+    def __init__(self, max_processes: int = 10, save_per_image: bool = True) -> None:
         """
         Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
         images in separate processes.
@@ -733,8 +746,8 @@ class ComputeWsiMetricsCallback(Callback):
         outputs: Any,
         batch: Any,
         batch_idx: int,
-        dataloader_idx=0,
-    ):
+        dataloader_idx: int = 0,
+    ) -> None:
         if not self._dump_dir:
             raise ValueError("Dump directory is not set.")
 

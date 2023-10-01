@@ -23,7 +23,7 @@ from omegaconf.errors import InterpolationKeyError
 from pytorch_lightning.utilities import rank_zero_only
 
 
-def get_logger(name=__name__) -> logging.Logger:
+def get_logger(name: str = __name__) -> logging.Logger:
     """Initializes multi-GPU-friendly python command line logger."""
 
     logger = logging.getLogger(name)
