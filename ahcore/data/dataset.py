@@ -4,7 +4,7 @@ Utilities to construct datasets and DataModule's from manifests.
 from __future__ import annotations
 
 import uuid as uuid_module
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator, Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -122,7 +122,7 @@ class DlupDataModule(pl.LightningDataModule):
             gen = datasets_from_data_description(
                 db_manager=self._data_manager,
                 data_description=self.data_description,
-                transform=self._pre_transform(requires_target=True if stage != TrainerFn.PREDICTING else False),
+                transform=self._pre_transform(requires_target=True if stage != "predict" else False),
                 stage=stage,
             )
             for dataset in gen:
@@ -130,7 +130,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         setattr(self, f"_{stage}_data_iterator", dataset_iterator())
 
-    def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: TrainerFn):
+    def _construct_concatenated_dataloader(self, data_iterator, batch_size: int, stage: str) -> Optional[DataLoader]:
         if not data_iterator:
             return None
 
@@ -140,7 +140,7 @@ class DlupDataModule(pl.LightningDataModule):
                 datasets.append(ds)
             return ConcatDataset(datasets)
 
-        self._logger.info("Constructing dataset for stage %s (this can take a while)", stage.value)
+        self._logger.info("Constructing dataset for stage %s (this can take a while)", stage)
         dataset = self._load_from_cache(construct_dataset, stage=stage)
         setattr(self, f"{stage}_dataset", dataset)
 
@@ -154,7 +154,7 @@ class DlupDataModule(pl.LightningDataModule):
         )
 
         batch_sampler: Sampler
-        if stage == TrainerFn.FITTING:
+        if stage == "fit":
             batch_sampler = torch.utils.data.BatchSampler(
                 torch.utils.data.RandomSampler(data_source=dataset, replacement=True),
                 batch_size=batch_size,
@@ -168,16 +168,16 @@ class DlupDataModule(pl.LightningDataModule):
             )
 
         return DataLoader(
-            dataset,  # type: ignore
+            dataset,
             num_workers=self._num_workers,
             batch_sampler=batch_sampler,
             persistent_workers=self._persistent_workers,
             pin_memory=self._pin_memory,
         )
 
-    def _load_from_cache(self, func: Callable, stage, *args, **kwargs):
+    def _load_from_cache(self, func: Callable, stage: str, *args: Any, **kwargs: Any) -> Any:
         name = fullname(func)
-        path = get_cache_dir() / str(stage.value) / name
+        path = get_cache_dir() / stage / name
         filename = path / f"{self.uuid}.pkl"
         if not filename.is_file():
             path.mkdir(exist_ok=True, parents=True)
@@ -194,34 +194,37 @@ class DlupDataModule(pl.LightningDataModule):
 
         return obj
 
-    def train_dataloader(self):
+    def train_dataloader(self) -> Optional[DataLoader]:
         if not self._fit_data_iterator:
-            self.setup(TrainerFn.FITTING.value)
+            self.setup("fit")
         return self._construct_concatenated_dataloader(
             self._fit_data_iterator,
             batch_size=self._batch_size,
-            stage=TrainerFn.FITTING,
+            stage="fit",
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> Optional[DataLoader]:
         if not self._validate_data_iterator:
-            self.setup(TrainerFn.VALIDATING.value)
+            self.setup("validate")
 
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         val_dataloader = self._construct_concatenated_dataloader(
             self._validate_data_iterator,
             batch_size=batch_size,
-            stage=TrainerFn.VALIDATING,
+            stage="validate",
         )
-        setattr(self, "val_concat_dataset", val_dataloader.dataset)
+        if val_dataloader:
+            setattr(self, "val_concat_dataset", val_dataloader.dataset)
+        else:
+            setattr(self, "val_concat_dataset", None)
         return val_dataloader
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> Optional[DataLoader]:
         if not self._test_data_iterator:
-            self.setup(TrainerFn.TESTING.value)
+            self.setup("test")
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
         return self._construct_concatenated_dataloader(
-            self._validate_data_iterator, batch_size=batch_size, stage=TrainerFn.TESTING
+            self._validate_data_iterator, batch_size=batch_size, stage="test"
         )
 
     def teardown(self, stage: str | None = None) -> None:

@@ -313,7 +313,7 @@ class AugmentationFactory(nn.Module):
                 logger.info("Using final transform %s", transform)
         self._final_transforms = nn.ModuleList(final_transforms)
 
-    def forward(self, sample):
+    def forward(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         output_data = [sample[key] for key in self._transformable_keys if key in sample]
         if self._initial_transforms:
             kwargs = {

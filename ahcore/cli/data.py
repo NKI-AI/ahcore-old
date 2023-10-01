@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from rich.progress import Progress
 
@@ -20,7 +21,7 @@ def _quick_hash(file_path: Path, max_bytes: int = 10**6) -> str:
     return hasher.hexdigest()
 
 
-def copy_data(args: argparse.Namespace):
+def copy_data(args: argparse.Namespace) -> None:
     manifest_fn = args.manifest_fn
     base_dir = args.base_dir
     dataset_name = args.dataset_name
@@ -56,7 +57,7 @@ def copy_data(args: argparse.Namespace):
                     progress.update(task, advance=1)
 
 
-def register_parser(parser: argparse._SubParsersAction):
+def register_parser(parser: argparse._SubParsersAction[Any]) -> None:  # pylint: disable=E1136
     """Register inspect commands to a root parser."""
     data_parser = parser.add_parser("data", help="Data utilities")
     data_subparsers = data_parser.add_subparsers(help="Data subparser")

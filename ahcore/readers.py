@@ -107,9 +107,11 @@ class H5FileImageReader:
             return 1.0
         return self._mpp / mpp
 
-    def _open_file(self):
+    def _open_file(self) -> None:
         self._h5file = h5py.File(self._filename, "r")
         self._metadata = json.loads(self._h5file.attrs["metadata"])
+        if not self._metadata:
+            raise ValueError("Metadata of h5 file is empty.")
         self._mpp = self._metadata["mpp"]
         self._tile_size = self._metadata["tile_size"]
         self._tile_overlap = self._metadata["tile_overlap"]
@@ -295,10 +297,10 @@ class H5FileImageReader:
 
         return stitched_image
 
-    def close(self):
+    def close(self) -> None:
         if self._h5file is not None:
             self._h5file.close()  # Close the file in close
         self._h5file = None  # Reset the h5file attribute
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()

@@ -161,7 +161,7 @@ class _ValidationDataset(Dataset):
 
         return sample
 
-    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray:
+    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | np.uint16 | np.bool_]:
         x, y = coordinates
         width, height = self._region_size
 
@@ -171,7 +171,7 @@ class _ValidationDataset(Dataset):
             region = self._reader.read_region_raw(coordinates, self._region_size)
         return region
 
-    def _read_and_pad_region(self, coordinates: tuple[int, int]) -> npt.NDArray:
+    def _read_and_pad_region(self, coordinates: tuple[int, int]) -> npt.NDArray[Any]:
         x, y = coordinates
         width, height = self._region_size
         new_width = min(width, self._reader.size[0] - x)
@@ -445,7 +445,7 @@ def _write_tiff(filename, tile_size, tile_process_function, _iterator_from_reade
         writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
 
 
-def tile_process_function(x):
+def tile_process_function(x) -> npt.NDArray[np.uint8]:
     return np.argmax(x, axis=0).astype(np.uint8)
 
 
@@ -467,7 +467,7 @@ class WriteTiffCallback(Callback):
     def dump_dir(self) -> Optional[Path]:
         return self._dump_dir
 
-    def _validate_parameters(self):
+    def _validate_parameters(self) -> None:
         dump_dir = self._dump_dir
         if not dump_dir:
             raise ValueError("Dump directory is not set.")
@@ -495,11 +495,11 @@ class WriteTiffCallback(Callback):
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
-        outputs,
-        batch,
-        batch_idx,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
         dataloader_idx=0,
-    ):
+    ) -> None:
         assert self.dump_dir, "dump_dir should never be None here."
 
         filename = Path(batch["path"][0])  # Filenames are constant across the batch.
@@ -512,7 +512,7 @@ class WriteTiffCallback(Callback):
             )
             self._filenames[filename] = output_filename
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         assert self.dump_dir, "dump_dir should never be None here."
         self._logger.info("Writing TIFF files to %s", self.dump_dir / "outputs" / f"{pl_module.name}")
         results = []
@@ -549,7 +549,13 @@ class WriteTiffCallback(Callback):
 TaskData = namedtuple("TaskData", ["filename", "h5_filename", "metadata", "mask", "annotations"])
 
 
-def prepare_task_data(filename, dump_dir, pl_module, data_description, data_manager):
+def prepare_task_data(
+    filename: Path,
+    dump_dir: Path,
+    pl_module: pl.LightningModule,
+    data_description: DataDescription,
+    data_manager: DataManager,
+) -> TaskData:
     h5_filename = _get_h5_output_filename(
         dump_dir=dump_dir,
         input_path=data_description.data_dir / filename,
@@ -569,7 +575,7 @@ def compute_metrics_for_case(
     data_description,
     wsi_metrics,
     save_per_image: bool,
-):
+) -> list[dict[str, Any]]:
     # Extract the data from the namedtuple
     filename, h5_filename, metadata, mask, annotations = task_data
 
@@ -618,14 +624,14 @@ def compute_metrics_for_case(
 
 # Adjusted stand-alone function.
 def schedule_task(
-    task_data,
+    task_data: TaskData,
     pool,
-    results_dict,
+    results_dict: dict,
     class_names,
-    data_description,
+    data_description: DataDescription,
     wsi_metrics,
-    save_per_image,
-):
+    save_per_image: bool,
+) -> None:
     result = pool.apply_async(
         compute_metrics_for_case,
         args=(task_data, class_names, data_description, wsi_metrics, save_per_image),
@@ -634,7 +640,7 @@ def schedule_task(
 
 
 class ComputeWsiMetricsCallback(Callback):
-    def __init__(self, max_processes=10, save_per_image: bool = True):
+    def __init__(self, max_processes=10, save_per_image: bool = True) -> None:
         """
         Callback to compute metrics on whole-slide images. This callback is used to compute metrics on whole-slide
         images in separate processes.
@@ -717,16 +723,16 @@ class ComputeWsiMetricsCallback(Callback):
     def _validate_metadata(self) -> Generator[ImageMetadata, None, None] | None:
         return self._validate_metadata_gen
 
-    def on_validation_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def on_validation_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self._validate_metadata_gen = self._create_validate_image_metadata_gen()
 
     def on_validation_batch_end(
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
-        outputs,
-        batch,
-        batch_idx,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
         dataloader_idx=0,
     ):
         if not self._dump_dir:
@@ -739,10 +745,11 @@ class ComputeWsiMetricsCallback(Callback):
                 "Either use batch_size=1 or ahcore.data.samplers.WsiBatchSampler."
             )
 
-    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> list[dict[str, Any]]:
         assert self._dump_dir
         assert self._data_description
         assert self._validate_metadata
+        assert self._data_manager
         metrics = []
 
         with multiprocessing.Pool(processes=self._max_processes) as pool:
@@ -753,7 +760,7 @@ class ComputeWsiMetricsCallback(Callback):
             for image_metadata in itertools.islice(self._validate_metadata, self._max_processes):
                 logger.info("Metadata: %s", image_metadata)
                 # Assemble the task data
-                # filename", "h5_filename", "metadata", "mask", "annotations
+                # filename", "h5_filename", "metadata", "mask", "annotations"
                 task_data = prepare_task_data(
                     image_metadata.filename,
                     self._dump_dir,
@@ -814,7 +821,7 @@ class ComputeWsiMetricsCallback(Callback):
                             next_metadata = next(self._validate_metadata, None)
         return metrics
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if not self._dump_dir:
             raise ValueError("Dump directory is not set.")
         if not self._wsi_metrics:

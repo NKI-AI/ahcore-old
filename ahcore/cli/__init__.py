@@ -4,9 +4,10 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
+from typing import Callable
 
 
-def dir_path(require_writable=False):
+def dir_path(require_writable: bool = False) -> Callable[[str], pathlib.Path]:
     def check_dir_path(path: str) -> pathlib.Path:
         """Check if the path is a valid and (optionally) writable directory.
 

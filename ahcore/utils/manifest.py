@@ -16,7 +16,6 @@ from dlup.data.dataset import TiledROIsSlideImageDataset
 from dlup.experimental_backends import ImageBackend
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel
-from pytorch_lightning.trainer.states import TrainerFn
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -31,11 +30,11 @@ logger = get_logger(__name__)
 
 
 class _AnnotationReadersDict(TypedDict):
-    ASAP_XML: Callable
-    GEOJSON: Callable
-    PYVIPS: Callable
-    TIFFFILE: Callable
-    OPENSLIDE: Callable
+    ASAP_XML: Callable[[Path], WsiAnnotations]
+    GEOJSON: Callable[[Path], WsiAnnotations]
+    PYVIPS: functools.partial
+    TIFFFILE: functools.partial
+    OPENSLIDE: functools.partial
 
 
 _AnnotationReaders: _AnnotationReadersDict = {
@@ -47,7 +46,9 @@ _AnnotationReaders: _AnnotationReadersDict = {
 }
 
 
-def parse_annotations_from_record(annotations_root: Path, record: list[Mask] | list[ImageAnnotations]):
+def parse_annotations_from_record(
+    annotations_root: Path, record: list[Mask] | list[ImageAnnotations]
+) -> WsiAnnotations | SlideImage:
     """
     Parse the annotations from a record of type ImageAnnotations.
 
@@ -106,7 +107,7 @@ def get_mask_and_annotations_from_record(annotations_root: Path, record: Image):
 
 
 def _get_rois(mask, data_description: DataDescription, stage: str):
-    if (mask is None) or (stage != TrainerFn.FITTING) or (not data_description.convert_mask_to_rois):
+    if (mask is None) or (stage != "fit") or (not data_description.convert_mask_to_rois):
         return None
 
     tile_size = data_description.training_grid.tile_size
@@ -139,7 +140,7 @@ class DataManager:
         split_version: str,
         split_category: Optional[str] = None,
     ) -> Generator[Patient, None, None]:
-        manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()  # type: ignore
+        manifest = self._session.query(Manifest).filter_by(name=manifest_name).first()
         self._ensure_record(manifest, f"Manifest with name {manifest_name}")
 
         split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()
@@ -206,12 +207,12 @@ class DataManager:
         list[ImageData]
             A list of metadata for all images associated with the patient.
         """
-        patient = self._session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
+        patient = self._session.query(Patient).filter_by(patient_code=patient_code).first()
         self._ensure_record(patient, f"Patient with code {patient_code} not found")
 
         return [fetch_image_metadata(image) for image in patient.images]
 
-    def get_image_by_filename(self, filename: str) -> Type[Image]:
+    def get_image_by_filename(self, filename: str) -> Image:
         """
         Fetch the metadata for an image based on its filename.
 
@@ -261,7 +262,7 @@ class DataManager:
             self.close()
         return False
 
-    def close(self):
+    def close(self) -> None:
         if self.__session is not None:
             self.__session.close()
             self.__session = None
@@ -291,7 +292,7 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
         for image in record.images:
             mask, annotations = get_mask_and_annotations_from_record(annotations_root, image)
             rois = _get_rois(mask, data_description, stage)
-            mask_threshold = 0.0 if stage != TrainerFn.FITTING else data_description.mask_threshold
+            mask_threshold = 0.0 if stage != "fit" else data_description.mask_threshold
 
             dataset = TiledROIsSlideImageDataset.from_standard_tiling(
                 path=image_root / image.filename,
@@ -305,7 +306,7 @@ def datasets_from_data_description(db_manager: DataManager, data_description: Da
                 mask_threshold=mask_threshold,
                 output_tile_size=getattr(grid_description, "output_tile_size", None),
                 rois=rois,
-                annotations=annotations if stage != TrainerFn.PREDICTING else None,
+                annotations=annotations if stage != "predict" else None,
                 labels=labels,  # type: ignore
                 transform=transform,
                 backend=ImageBackend[str(image.reader)],

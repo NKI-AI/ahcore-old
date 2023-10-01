@@ -15,15 +15,15 @@ logger = get_logger()
 
 
 class WsiBatchSampler(Sampler[List[int]]):
-    def __init__(self, dataset: ConcatDataset, batch_size: int):
+    def __init__(self, dataset: ConcatDataset, batch_size: int) -> None:
         super().__init__(data_source=dataset)
         self._dataset = dataset
         self._batch_size = batch_size
 
         self._slices: List[slice] = []
-        self._compute_slices()
+        self._populate_slices()
 
-    def _compute_slices(self):
+    def _populate_slices(self) -> None:
         for idx, _ in enumerate(self._dataset.datasets):
             slice_start = 0 if len(self._slices) == 0 else self._slices[-1].stop
             slice_stop = self._dataset.cumulative_sizes[idx]
@@ -43,7 +43,7 @@ class WsiBatchSampler(Sampler[List[int]]):
             if len(batch) > 0:
                 yield batch
 
-    def __len__(self):
+    def __len__(self) -> int:
         # The total number of batches is the sum of the number of batches in each slice
         return sum(math.ceil((s.stop - s.start) / self._batch_size) for s in self._slices)
 

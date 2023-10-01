@@ -6,7 +6,7 @@ All the relevant loss modules. In ahcore, losses are returned per sample in the 
 """
 from __future__ import annotations
 
-from typing import Union
+from typing import Callable, Union
 
 import numpy as np
 import torch
@@ -19,20 +19,25 @@ class LossFactory(nn.Module):
 
     def __init__(
         self,
-        losses: list,
+        losses: list[dict[str, Callable]],
         weights: list[Union[torch.Tensor, float]] | None = None,
         class_proportions: torch.Tensor | None = None,
     ):
         """
         Parameters
         ----------
-        losses : list
+        losses : list[dict[str, Callable]
             List of losses which are functions which accept `(input, target, roi, weight)`. The weight will be
             applied per class.
         weights : list
             List of length `losses`. The weights weight the total contribution so `weight_0 * loss_0_val + ...` will
             be the resulting loss.
-        class_proportions
+        class_proportions : torch.Tensor, optional
+            The class proportions are used to weight the loss per class. This is useful for class imbalance.
+
+        TODO
+        ----
+        Is this the best way to pass the losses?
         """
         super().__init__()
         if weights is None:
@@ -53,7 +58,7 @@ class LossFactory(nn.Module):
         else:
             self._class_weights = None
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None = None):
+    def forward(self, input: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None = None) -> torch.Tensor:
         total_loss = sum(
             [
                 weight.to(input.device) * curr_loss(input, target, roi, weight=self._class_weights)

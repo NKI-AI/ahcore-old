@@ -68,7 +68,7 @@ class AhCoreLightningModule(pl.LightningModule):
         return self._wsi_metrics
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._model.__class__.__name__
 
     def forward(self, sample):
@@ -117,7 +117,7 @@ class AhCoreLightningModule(pl.LightningModule):
         # ROIs can reduce the usable area of the inputs, the loss should be scaled appropriately
         roi = batch.get("roi", None)
 
-        if stage == TrainerFn.FITTING:
+        if stage == "fit":
             _prediction = self._model(batch["image"])
             batch["prediction"] = _prediction
         else:
@@ -136,7 +136,7 @@ class AhCoreLightningModule(pl.LightningModule):
             "metrics": _metrics,
             **_relevant_dict,
         }
-        if stage != TrainerFn.FITTING:
+        if stage != "fit":
             output["prediction"] = _prediction
 
         _stage = stage.value if isinstance(stage, TrainerFn) else stage
@@ -173,11 +173,11 @@ class AhCoreLightningModule(pl.LightningModule):
         #     if self._tensorboard:
         #         self._tensorboard.add_graph(self._model, batch["image"])
 
-        output = self.do_step(batch, batch_idx, stage=TrainerFn.FITTING)
+        output = self.do_step(batch, batch_idx, stage="fit")
         return output
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
-        output = self.do_step(batch, batch_idx, stage=TrainerFn.VALIDATING)
+        output = self.do_step(batch, batch_idx, stage="validate")
 
         # This is a sanity check. We expect the filenames to be constant across the batch.
         filename = batch["path"][0]

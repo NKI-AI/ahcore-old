@@ -3,9 +3,10 @@ Module for the pre-transforms, which are the transforms that are applied before 
 dataset."""
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from dlup.data.transforms import ContainsPolygonToLabel, ConvertAnnotationsToMask, RenameLabels
 from torchvision.transforms import Compose
@@ -41,7 +42,9 @@ class PreTransformTaskFactory:
         self._transforms = Compose(transforms)
 
     @classmethod
-    def for_segmentation(cls, data_description: DataDescription, requires_target: bool = True):
+    def for_segmentation(
+        cls, data_description: DataDescription, requires_target: bool = True
+    ) -> PreTransformTaskFactory:
         """
         Pretransforms for segmentation tasks. If the target is required these transforms are applied as follows:
         - Labels are renamed (for instance if you wish to map several labels to on specific class)
@@ -76,7 +79,9 @@ class PreTransformTaskFactory:
         return cls(transforms)
 
     @classmethod
-    def for_wsi_classification(cls, data_description: DataDescription, requires_target: bool = True):
+    def for_wsi_classification(
+        cls, data_description: DataDescription, requires_target: bool = True
+    ) -> PreTransformTaskFactory:
         transforms: list[Callable] = []
         if not requires_target:
             return cls(transforms)
@@ -90,15 +95,15 @@ class PreTransformTaskFactory:
         return cls(transforms)
 
     @classmethod
-    def for_tile_classification(cls, roi_name: str, label: str, threshold: float):
+    def for_tile_classification(cls, roi_name: str, label: str, threshold: float) -> PreTransformTaskFactory:
         """Tile classification is based on a transform which checks if a polygon is present for a given threshold"""
         convert_annotations = ContainsPolygonToLabel(roi_name=roi_name, label=label, threshold=threshold)
         return cls([convert_annotations])
 
-    def __call__(self, data):
+    def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
         return self._transforms(data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"PreTransformTaskFactory(transforms={self._transforms})"
 
 
@@ -117,7 +122,7 @@ class LabelToClassIndex:
     def __init__(self, index_map: dict[str, int]):
         self._index_map = index_map
 
-    def __call__(self, sample):
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         sample["labels"] = {
             label_name: self._index_map[label_value] for label_name, label_value in sample["labels"].items()
         }
@@ -140,7 +145,7 @@ class OneHotEncodeMask:
         # Check the max value in the mask
         self._largest_index = max(index_map.values())
 
-    def __call__(self, sample):
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         mask = sample["annotation_data"]["mask"]
 
         new_mask = np.zeros((self._largest_index + 1, *mask.shape))
@@ -151,7 +156,7 @@ class OneHotEncodeMask:
         return sample
 
 
-def one_hot_encoding(index_map: dict[str, int], mask: np.ndarray) -> np.ndarray:
+def one_hot_encoding(index_map: dict[str, int], mask: npt.NDArray[Any]) -> npt.NDArray[Any]:
     """
     functional interface to convert labels/predictions into one-hot codes
 
@@ -160,12 +165,12 @@ def one_hot_encoding(index_map: dict[str, int], mask: np.ndarray) -> np.ndarray:
     index_map : dict[str, int]
         Index map mapping the label name to the integer value it has in the mask.
 
-    mask: np.ndarray
+    mask: npt.NDArray
         The numpy array of model predictions or ground truth labels.
 
     Returns
     -------
-    new_mask: np.ndarray
+    new_mask: npt.NDArray
         One-hot encoded output
     """
     largest_index = max(index_map.values())
@@ -180,7 +185,7 @@ class PathToString:
     This transform converts the path to a string.
     """
 
-    def __call__(self, sample):
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
 
@@ -192,7 +197,7 @@ class ImageToTensor:
     Transform to translate the output of a dlup dataset to data_description supported by AhCore
     """
 
-    def __call__(self, sample):
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         sample["image"] = F.pil_to_tensor(sample["image"].convert("RGB")).float()
 
         if sample["image"].sum() == 0:
@@ -220,5 +225,5 @@ class ImageToTensor:
 
         return sample
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}()"

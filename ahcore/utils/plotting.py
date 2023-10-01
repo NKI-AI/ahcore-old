@@ -1,10 +1,11 @@
 """Plotting utilities for logging."""
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 import PIL
 import PIL.Image
 import PIL.ImageColor
@@ -14,14 +15,16 @@ from dlup.annotations import AnnotationClass, AnnotationType, Point, Polygon
 from torchvision.transforms import functional as TF  # noqa
 from torchvision.utils import make_grid
 
+_ColorType = Optional[tuple[int, int, int] | tuple[int, int, int, int] | str | int]
+
 
 def plot_2d(
     image: PIL.Image.Image,
-    mask: np.ndarray | None = None,
+    mask: npt.NDArray[np.uint8 | np.bool_] | None = None,
     mask_colors=None,
-    alpha=70,
-    geometries=None,
-    geometries_color_map=None,
+    alpha: int = 70,
+    geometries: Optional[list[Polygon | Point]] = None,
+    geometries_color_map: Optional[dict] = None,
     geometries_width: int = 2,
 ) -> PIL.Image.Image:
     """
@@ -54,7 +57,7 @@ def plot_2d(
 
     image = image.convert("RGBA")
 
-    def _get_geometries_color(label):
+    def _get_geometries_color(label: str) -> _ColorType:
         if geometries_color_map is None:
             return None
         return geometries_color_map.get(label, None)

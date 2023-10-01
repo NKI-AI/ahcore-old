@@ -11,6 +11,7 @@ from logging import getLogger
 from multiprocessing import Pool
 from pathlib import Path
 from pprint import pformat
+from typing import Any, Generator
 
 import imageio.v3 as iio
 import numpy as np
@@ -29,7 +30,7 @@ from ahcore.writers import H5FileImageWriter
 logger = getLogger(__name__)
 
 
-def read_mask(path: Path) -> np.ndarray:
+def read_mask(path: Path) -> npt.NDArray[np.uint8]:
     return iio.imread(path)[..., 0]
 
 
@@ -44,7 +45,7 @@ class SlideImageMetaData(BaseModel):
     vendor: str | None
 
     @classmethod
-    def from_dataset(cls, dataset: TiledROIsSlideImageDataset):
+    def from_dataset(cls, dataset: TiledROIsSlideImageDataset) -> "SlideImageMetaData":
         _relevant_keys = ["aspect_ratio", "magnification", "mpp", "size", "vendor"]
         return cls(
             **{
@@ -53,7 +54,7 @@ class SlideImageMetaData(BaseModel):
             }
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         for k, v in self.model_dump().items():
             yield k, v
 
@@ -64,7 +65,7 @@ class TileMetaData(BaseModel):
     grid_local_coordinates: tuple[int, int]
     grid_index: int
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         for k, v in self.model_dump().items():
             yield k, v
 
@@ -136,7 +137,7 @@ def _save_thumbnail(
 
 def create_slide_image_dataset(
     slide_image_path: Path,
-    mask: SlideImage | np.ndarray | None,
+    mask: SlideImage | npt.NDArray[np.uint8 | np.bool_] | None,
     cfg: DatasetConfigs,
     overwrite_mpp: tuple[float, float] | None = None,
 ) -> TiledROIsSlideImageDataset:
@@ -175,7 +176,9 @@ def create_slide_image_dataset(
     )
 
 
-def _generator(dataset, quality: int | None = 80, compression: str = "JPEG"):
+def _generator(
+    dataset: TiledROIsSlideImageDataset, quality: int | None = 80, compression: str = "JPEG"
+) -> Generator[Any, Any, Any]:
     for idx, sample in enumerate(dataset):
         buffered = io.BytesIO()
         if quality is not None:
@@ -199,7 +202,7 @@ def save_tiles(
     dataset: TiledROIsSlideImageDataset,
     h5_writer: H5FileImageWriter,
     quality: int | None = 80,
-):
+) -> None:
     """
     Saves the tiles in the given image slide dataset to disk.
 
@@ -266,12 +269,12 @@ def _tiling_pipeline(
     logger.debug("Working on %s. Writing to %s", image_path, output_file)
 
 
-def _wrapper(dataset_cfg, quality, save_thumbnail, args):
+def _wrapper(dataset_cfg: DatasetConfigs, quality: int, save_thumbnail: bool, args: tuple[Path, Path, Path]) -> None:
     image_path, mask_path, output_file = args
     return _tiling_pipeline(image_path, mask_path, output_file, dataset_cfg, quality, save_thumbnail)
 
 
-def _do_tiling(args: argparse.Namespace):
+def _do_tiling(args: argparse.Namespace) -> None:
     images_list: list[tuple[Path, Path | None, Path]] = []
 
     with open(args.file_list, "r") as file_list:
@@ -341,7 +344,7 @@ def _do_tiling(args: argparse.Namespace):
                 progress.update(task, advance=1)
 
 
-def register_parser(parser: argparse._SubParsersAction):
+def register_parser(parser: argparse._SubParsersAction[Any]) -> None:
     """Register inspect commands to a root parser."""
     tiling_parser = parser.add_parser("tiling", help="Tiling utilities")
     tiling_subparsers = tiling_parser.add_subparsers(help="Tiling subparser")

@@ -191,7 +191,9 @@ class H5FileImageWriter:
                 connection_to_parent.close()
 
     @staticmethod
-    def _batch_generator(first_coordinates_batch, batch_generator):
+    def _batch_generator(
+        first_coordinates_batch: Any, batch_generator: Generator[Any, None, None]
+    ) -> Generator[Any, None, None]:
         # We yield the first batch too so the progress bar takes the first batch also into account
         yield first_coordinates_batch
         for tile in batch_generator:
