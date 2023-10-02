@@ -12,7 +12,7 @@ from typing import Callable, Generator, Literal, Optional, Type, TypedDict, cast
 
 from dlup import SlideImage
 from dlup.annotations import WsiAnnotations
-from dlup.data.dataset import TiledROIsSlideImageDataset
+from dlup.data.dataset import Dataset, TiledROIsSlideImageDataset
 from dlup.experimental_backends import ImageBackend
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel
@@ -25,7 +25,7 @@ from ahcore.utils.data import DataDescription
 from ahcore.utils.database_models import Base, Image, ImageAnnotations, Manifest, Mask, Patient, Split, SplitDefinitions
 from ahcore.utils.io import get_logger
 from ahcore.utils.rois import compute_rois
-from ahcore.utils.types import PositiveFloat, PositiveInt, Rois
+from ahcore.utils.types import DlupDatasetSample, PositiveFloat, PositiveInt, Rois
 
 logger = get_logger(__name__)
 
@@ -35,9 +35,9 @@ _AnnotationReturnTypes = WsiAnnotations | SlideImage
 class _AnnotationReadersDict(TypedDict):
     ASAP_XML: Callable[[Path], WsiAnnotations]
     GEOJSON: Callable[[Path], WsiAnnotations]
-    PYVIPS: functools.partial
-    TIFFFILE: functools.partial
-    OPENSLIDE: functools.partial
+    PYVIPS: Callable[[Path], SlideImage]
+    TIFFFILE: Callable[[Path], SlideImage]
+    OPENSLIDE: Callable[[Path], SlideImage]
 
 
 _AnnotationReaders: _AnnotationReadersDict = {
@@ -273,7 +273,12 @@ class DataManager:
             self.__session = None
 
 
-def datasets_from_data_description(db_manager: DataManager, data_description: DataDescription, transform, stage: str):
+def datasets_from_data_description(
+    db_manager: DataManager,
+    data_description: DataDescription,
+    transform: Callable[[DlupDatasetSample], DlupDatasetSample],
+    stage: str,
+) -> Generator[Dataset[DlupDatasetSample], None, None]:
     logger.info(f"Reading manifest from {data_description.manifest_database_uri} for stage {stage}")
 
     image_root = data_description.data_dir

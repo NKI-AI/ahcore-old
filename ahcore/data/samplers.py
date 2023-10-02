@@ -47,7 +47,7 @@ class WsiBatchSampler(Sampler[List[int]]):
         # The total number of batches is the sum of the number of batches in each slice
         return sum(math.ceil((s.stop - s.start) / self._batch_size) for s in self._slices)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"batch_size={self._batch_size}, "

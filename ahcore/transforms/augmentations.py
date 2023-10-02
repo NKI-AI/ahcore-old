@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any, Optional, cast
 
 import kornia.augmentation as K
+import pytorch_lightning as pl
 import torch
 from kornia.augmentation import random_generator as rg
 from kornia.constants import DataKey, Resample
@@ -46,7 +47,7 @@ class MeanStdNormalizer(nn.Module):
         else:
             self._std = nn.Parameter(torch.Tensor(std), requires_grad=False)
 
-    def forward(self, *args: torch.Tensor, **kwargs):
+    def forward(self, *args: torch.Tensor, **kwargs: Any) -> list[torch.Tensor] | torch.Tensor:
         output = []
         data_keys = kwargs["data_keys"]
         for sample, data_key in zip(args, data_keys):
@@ -80,13 +81,13 @@ class Identity(K.AugmentationBase2D):
 
         super().__init__(p, p_batch, same_on_batch, keepdim)
 
-    def forward(self, *args: torch.Tensor, **kwargs):
+    def forward(self, *args: torch.Tensor, **kwargs: Any):
         if len(args) == 1:
             return args[0]
 
         return args
 
-    def inverse(self, *args: torch.Tensor, **kwargs):
+    def inverse(self, *args: torch.Tensor, **kwargs: Any):
         if len(args) == 1:
             return args[0]
         return args
@@ -109,9 +110,9 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         epsilon: float = 1e-6,
         p: float = 0.5,
         p_batch: float = 1.0,
-        same_on_batch=False,
-        keepdim=False,
-        **kwargs,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
+        **kwargs: Any,
     ) -> None:
         """
         Apply a color stain augmentation in the Hemaetoxylin-Eosin-DAB (HED) color space based on [1].
@@ -170,7 +171,7 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
         params: dict[str, torch.Tensor],
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> torch.Tensor:
         """
         Apply HED color augmentation on an input tensor.
@@ -212,8 +213,8 @@ class CenterCrop(nn.Module):
         self,
         *sample: torch.Tensor,
         data_keys: Optional[list[str | int | DataKey]] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> list[torch.Tensor] | torch.Tensor:
         output = [self._cropper(item) for item in sample]
 
         if len(output) == 1:
@@ -253,7 +254,7 @@ class AugmentationFactory(nn.Module):
     def __init__(
         self,
         data_description: DataDescription,
-        data_module,
+        data_module: pl.LightningDataModule,
         initial_transforms: list | None = None,
         random_apply_intensity: int | bool | ListConfig = False,
         random_apply_weights_intensity: list[float] | None = None,
@@ -262,7 +263,7 @@ class AugmentationFactory(nn.Module):
         random_apply_weights_geometric: list[float] | ListConfig | None = None,
         geometric_augmentations: list | None = None,
         final_transforms: list | None = None,
-    ):
+    ) -> None:
         super().__init__()
 
         self._transformable_keys = ["image", "target"]

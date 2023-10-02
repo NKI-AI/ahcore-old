@@ -65,7 +65,9 @@ class DiceMetric(AhCoreMetric):
 
         self.name = "dice"
 
-    def __call__(self, predictions, target, roi: torch.Tensor | None):
+    def __call__(
+        self, predictions: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None
+    ) -> dict[str, torch.Tensor]:
         dice_components = _get_intersection_and_cardinality(predictions, target, roi, self._num_classes)
         dices = []
         for intersection, cardinality in dice_components:
@@ -76,7 +78,7 @@ class DiceMetric(AhCoreMetric):
         output = {f"{self.name}/{self._label_to_class[idx]}": dices[idx] for idx in range(0, self._num_classes)}
         return output
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}(num_classes={self._num_classes})"
 
 
@@ -110,7 +112,7 @@ class MetricFactory:
         raise NotImplementedError
 
     @classmethod
-    def for_tile_classification(cls, roi_name: str, label: str, threshold: float):
+    def for_tile_classification(cls, *args: Any, **kwargs: Any) -> MetricFactory:
         raise NotImplementedError
 
     def __call__(
@@ -132,15 +134,17 @@ class WSIMetric(abc.ABC):
         self.name: str | None = None
 
     @abc.abstractmethod
-    def process_batch(self, *args, **kwargs) -> None:
+    # TODO: Fix Any
+    def process_batch(self, *args: Any, **kwargs: Any) -> None:
         pass
 
     @abc.abstractmethod
-    def get_wsi_score(self, *args, **kwargs) -> None:
+    # TODO: Fix Any
+    def get_wsi_score(self, *args: Any, **kwargs: Any) -> None:
         pass
 
     @abc.abstractmethod
-    def get_average_score(self, *args, **kwargs) -> dict[str, float]:
+    def get_average_score(self, *args: Any, **kwargs: Any) -> dict[str, float]:
         pass
 
     @abc.abstractmethod

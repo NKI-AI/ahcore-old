@@ -35,16 +35,15 @@ from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.data import DataDescription, GridDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.manifest import DataManager, ImageMetadata, fetch_image_metadata, get_mask_and_annotations_from_record
+from ahcore.utils.types import DlupDatasetSample, GenericArray
 from ahcore.writers import H5FileImageWriter
 
 logger = get_logger(__name__)
 
 logging.getLogger("pyvips").setLevel(logging.ERROR)
 
-_GenericArray = npt.NDArray[np.generic]
 
-
-class _ValidationDataset(Dataset):
+class _ValidationDataset(Dataset[DlupDatasetSample]):
     """Helper dataset to compute the validation metrics."""
 
     def __init__(
@@ -409,8 +408,8 @@ class WriteH5Callback(Callback):
 
     @staticmethod
     def generator(
-        queue: Queue[Optional[_GenericArray]],  # pylint: disable=unsubscriptable-object
-    ) -> Generator[_GenericArray, None, None]:
+        queue: Queue[Optional[GenericArray]],  # pylint: disable=unsubscriptable-object
+    ) -> Generator[GenericArray, None, None]:
         while True:
             batch = queue.get()
             if batch is None:
@@ -419,11 +418,11 @@ class WriteH5Callback(Callback):
 
 
 # Separate because this cannot be pickled.
-def _iterator_from_reader(
+def _generator_from_reader(
     h5_reader: H5FileImageReader,
     tile_size: tuple[int, int],
-    tile_process_function: Callable[[_GenericArray], _GenericArray],
-):
+    tile_process_function: Callable[[GenericArray], GenericArray],
+) -> Generator[GenericArray, None, None]:
     validation_dataset = _ValidationDataset(
         data_description=None,
         native_mpp=h5_reader.mpp,
@@ -441,7 +440,7 @@ def _iterator_from_reader(
 def _write_tiff(
     filename: Path,
     tile_size: tuple[int, int],
-    tile_process_function: Callable[[_GenericArray], _GenericArray],
+    tile_process_function: Callable[[GenericArray], GenericArray],
     _iterator_from_reader,
 ):
     logger.debug("Writing TIFF %s", filename.with_suffix(".tiff"))
@@ -458,8 +457,8 @@ def _write_tiff(
         writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
 
 
-def tile_process_function(x: npt.NDArray[np.float_]) -> _GenericArray:
-    return np.argmax(x, axis=0).astype(np.uint8)
+def tile_process_function(x: npt.NDArray[np.float_]) -> GenericArray:
+    return np.asarray(np.argmax(x, axis=0).astype(np.uint8))
 
 
 class WriteTiffCallback(Callback):
@@ -548,7 +547,7 @@ class WriteTiffCallback(Callback):
                     h5_filename,
                     self._tile_size,
                     self._tile_process_function,
-                    _iterator_from_reader,
+                    _generator_from_reader,
                 ),
             )
             results.append(result)
@@ -620,6 +619,8 @@ def compute_metrics_for_case(
             "image_fn": str(data_description.data_dir / metadata.filename),
             "uuid": filename.stem,
         }
+
+        # TODO: These need to be removed, this is really weird.
         if filename.with_suffix(".tiff").is_file():
             wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
         if filename.is_file():

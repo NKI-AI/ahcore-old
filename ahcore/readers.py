@@ -16,6 +16,7 @@ import numpy.typing as npt
 from scipy.ndimage import map_coordinates
 
 from ahcore.utils.io import get_logger
+from ahcore.utils.types import GenericArray
 
 logger = get_logger(__name__)
 
@@ -142,7 +143,7 @@ class H5FileImageReader:
         location: tuple[int, int],
         scaling: float,
         size: tuple[int, int],
-    ) -> npt.NDArray:
+    ) -> GenericArray:
         """
 
         Parameters

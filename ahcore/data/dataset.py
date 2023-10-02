@@ -9,7 +9,7 @@ from typing import Any, Callable, Iterator, Optional
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from dlup.data.dataset import ConcatDataset, Dataset
+from dlup.data.dataset import ConcatDataset
 from pytorch_lightning.trainer.states import TrainerFn
 from torch.utils.data import DataLoader, Sampler
 
@@ -17,9 +17,7 @@ import ahcore.data.samplers
 from ahcore.utils.data import DataDescription, basemodel_to_uuid
 from ahcore.utils.io import fullname, get_cache_dir, get_logger
 from ahcore.utils.manifest import DataManager, datasets_from_data_description
-
-_DlupDatasetSample = dict[str, Any]
-_DlupDataset = Dataset[_DlupDatasetSample]
+from ahcore.utils.types import DlupDatasetSample, _DlupDataset
 
 
 class DlupDataModule(pl.LightningDataModule):
@@ -28,7 +26,7 @@ class DlupDataModule(pl.LightningDataModule):
     def __init__(
         self,
         data_description: DataDescription,
-        pre_transform,
+        pre_transform: Callable[[bool], Callable[[DlupDatasetSample], DlupDatasetSample]],
         batch_size: int = 32,  # noqa,pylint: disable=unused-argument
         validate_batch_size: int | None = None,  # noqa,pylint: disable=unused-argument
         num_workers: int = 16,
@@ -125,7 +123,7 @@ class DlupDataModule(pl.LightningDataModule):
             gen = datasets_from_data_description(
                 db_manager=self._data_manager,
                 data_description=self.data_description,
-                transform=self._pre_transform(requires_target=True if stage != "predict" else False),
+                transform=self._pre_transform(True if stage != "predict" else False),  # This bool adds the target
                 stage=stage,
             )
             for dataset in gen:
@@ -135,11 +133,11 @@ class DlupDataModule(pl.LightningDataModule):
 
     def _construct_concatenated_dataloader(
         self, data_iterator: Iterator[_DlupDataset], batch_size: int, stage: str
-    ) -> Optional[DataLoader[_DlupDatasetSample]]:
+    ) -> Optional[DataLoader[DlupDatasetSample]]:
         if not data_iterator:
             return None
 
-        def construct_dataset() -> ConcatDataset[_DlupDatasetSample]:
+        def construct_dataset() -> ConcatDataset[DlupDatasetSample]:
             datasets = []
             for _, ds in enumerate(data_iterator):
                 datasets.append(ds)
@@ -199,7 +197,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         return obj
 
-    def train_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
+    def train_dataloader(self) -> Optional[DataLoader[DlupDatasetSample]]:
         if not self._fit_data_iterator:
             self.setup("fit")
         assert self._fit_data_iterator
@@ -209,7 +207,7 @@ class DlupDataModule(pl.LightningDataModule):
             stage="fit",
         )
 
-    def val_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
+    def val_dataloader(self) -> Optional[DataLoader[DlupDatasetSample]]:
         if not self._validate_data_iterator:
             self.setup("validate")
 
@@ -226,7 +224,7 @@ class DlupDataModule(pl.LightningDataModule):
             setattr(self, "val_concat_dataset", None)
         return val_dataloader
 
-    def test_dataloader(self) -> Optional[DataLoader[_DlupDatasetSample]]:
+    def test_dataloader(self) -> Optional[DataLoader[DlupDatasetSample]]:
         if not self._test_data_iterator:
             self.setup("test")
         batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
