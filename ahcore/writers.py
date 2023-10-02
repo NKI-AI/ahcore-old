@@ -17,6 +17,7 @@ import numpy.typing as npt
 from dlup.tiling import Grid, GridOrder, TilingMode
 
 from ahcore.utils.io import get_logger
+from ahcore.utils.types import GenericArray
 
 logger = get_logger(__name__)
 
@@ -36,7 +37,7 @@ class H5FileImageWriter:
         progress: Optional[Any] = None,
     ) -> None:
         self._grid: Optional[Grid] = None
-        self._grid_coordinates: Optional[npt.NDArray] = None
+        self._grid_coordinates: Optional[npt.NDArray[np.int_]] = None
         self._filename: Path = filename
         self._size: tuple[int, int] = size
         self._mpp: float = mpp
@@ -53,7 +54,7 @@ class H5FileImageWriter:
         self._logger = logger  # maybe not the best way, think about it
         self._logger.debug("Writing h5 to %s", self._filename)
 
-    def init_writer(self, first_batch: np.ndarray, h5file: h5py.File) -> None:
+    def init_writer(self, first_batch: GenericArray, h5file: h5py.File) -> None:
         """Initializes the image_dataset based on the first tile."""
         batch_shape = np.asarray(first_batch).shape
         batch_dtype = np.asarray(first_batch).dtype
@@ -138,7 +139,7 @@ class H5FileImageWriter:
 
     def consume(
         self,
-        batch_generator: Generator[tuple[np.ndarray, np.ndarray], None, None],
+        batch_generator: Generator[tuple[GenericArray, GenericArray], None, None],
         connection_to_parent: Optional[Connection] = None,
     ) -> None:
         """Consumes tiles one-by-one from a generator and writes them to the h5 file."""
