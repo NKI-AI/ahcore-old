@@ -442,7 +442,7 @@ def _write_tiff(
     tile_size: tuple[int, int],
     tile_process_function: Callable[[GenericArray], GenericArray],
     _iterator_from_reader,
-):
+) -> None:
     logger.debug("Writing TIFF %s", filename.with_suffix(".tiff"))
     with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
         writer = TifffileImageWriter(

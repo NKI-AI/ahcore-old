@@ -45,12 +45,11 @@ spack load cuda@11.7
 spack load openslide/njs7ivd
 spack load pixman@0.40.0
 spack load libvips@8.14.1
-spack unload py-pip/f53qb3w py-wheel/qiasbdy py-setuptools/yaxles2 python/ocsapfm
 spack unload python py-pip
-conda activate ahcore2
+conda activate ahcore
 spack load glib/7wugotn
 
-#python /home/j.teuwen/tmp/pycharm_project_ahcore_393/tools/train.py lit_module=monai_attention_unet augmentations=segmentation data_description=tissue_subtypes/segmentation task=segmentation
+python /home/j.teuwen/tmp/pycharm_project_ahcore_393/tools/train.py lit_module=monai_attention_unet augmentations=segmentation data_description=tissue_subtypes/segmentation task=segmentation
 # Slurm setup
 SLURM_PARAMETERS="hydra/launcher=submitit_slurm hydra.launcher.gpus_per_node=$NUM_GPUS_PER_NODE hydra.launcher.tasks_per_node=$NUM_GPUS_PER_NODE hydra.launcher.nodes=$NUM_NODES hydra.launcher.cpus_per_task=$NUM_CPUS_PER_NODE hydra.launcher.mem_gb=$MEM_GB_PER_NODE hydra.launcher.partition=$PARTITION +hydra.launcher.additional_parameters={account:$ACCOUNT} hydra.launcher.timeout_min=$TIME_PER_NODE"
 # Standard setup

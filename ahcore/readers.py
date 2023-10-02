@@ -8,7 +8,8 @@ import json
 import math
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from types import TracebackType
+from typing import Literal, Optional, Type
 
 import h5py
 import numpy as np
@@ -19,8 +20,6 @@ from ahcore.utils.io import get_logger
 from ahcore.utils.types import GenericArray
 
 logger = get_logger(__name__)
-
-_GenericArray = npt.NDArray[np.generic]
 
 
 class StitchingMode(Enum):
@@ -199,7 +198,7 @@ class H5FileImageReader:
 
         return rescaled_region
 
-    def read_region_raw(self, location: tuple[int, int], size: tuple[int, int]) -> _GenericArray:
+    def read_region_raw(self, location: tuple[int, int], size: tuple[int, int]) -> GenericArray:
         """
         Reads a region in the stored h5 file. This function stitches the regions as saved in the h5 file. Doing this
         it takes into account:
@@ -305,5 +304,8 @@ class H5FileImageReader:
             self._h5file.close()  # Close the file in close
         self._h5file = None  # Reset the h5file attribute
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]
+    ) -> Literal[False]:
         self.close()
+        return False
