@@ -30,7 +30,7 @@ from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
 from ahcore.lit_module import AhCoreLightningModule
-from ahcore.metrics import WSIMetric
+from ahcore.metrics import WSIMetricFactory
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.data import DataDescription, GridDescription
@@ -633,7 +633,7 @@ def compute_metrics_for_case(
             wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
         if filename.is_file():
             wsi_metrics_dictionary["h5_fn"] = str(filename)
-        for metric in wsi_metrics._tile_metric:
+        for metric in wsi_metrics._metrics:
             metric.get_wsi_score(str(filename))
             wsi_metrics_dictionary[metric.name] = {
                 class_names[class_idx]: metric.wsis[str(filename)][class_idx][metric.name].item()
@@ -679,7 +679,7 @@ class ComputeWsiMetricsCallback(Callback):
         self._save_per_image = save_per_image
         self._filenames: dict[Path, Path] = {}
 
-        self._wsi_metrics: WSIMetric | None = None
+        self._wsi_metrics: WSIMetricFactory | None = None
         self._class_names: dict[int, str] = {}
         self._data_manager = None
         self._validate_filenames_gen = None
@@ -776,7 +776,7 @@ class ComputeWsiMetricsCallback(Callback):
                 "Either use batch_size=1 or ahcore.data.samplers.WsiBatchSampler."
             )
 
-    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> list[dict[str, Any]]:
+    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> list[list[dict[str, dict[str, float]]]]:
         assert self._dump_dir
         assert self._data_description
         assert self._validate_metadata

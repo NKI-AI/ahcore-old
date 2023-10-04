@@ -13,7 +13,7 @@ from pytorch_lightning.trainer.states import TrainerFn
 from torch import nn
 
 from ahcore.exceptions import ConfigurationError
-from ahcore.metrics import TileMetric, WSIMetric
+from ahcore.metrics import MetricFactory, WSIMetricFactory
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 
@@ -37,7 +37,7 @@ class AhCoreLightningModule(pl.LightningModule):
         data_description: DataDescription,
         loss: nn.Module | None = None,
         augmentations: dict[str, nn.Module] | None = None,
-        metrics: dict[str, WSIMetric | TileMetric] | None = None,
+        metrics: dict[str, MetricFactory | WSIMetricFactory] | None = None,
         scheduler: Any | None = None,  # noqa
     ):
         super().__init__()
@@ -61,10 +61,10 @@ class AhCoreLightningModule(pl.LightningModule):
         if metrics is not None:
             tile_metric = metrics.get("tile_level")
             wsi_metric = metrics.get("wsi_level", None)
-            if tile_metric is not None and not isinstance(tile_metric, TileMetric):
-                raise ConfigurationError("Tile metrics must be of type TileMetric")
-            if wsi_metric is not None and not isinstance(wsi_metric, WSIMetric):
-                raise ConfigurationError("WSI metrics must be of type WSIMetric")
+            if tile_metric is not None and not isinstance(tile_metric, MetricFactory):
+                raise ConfigurationError("Tile metrics must be of type MetricFactory")
+            if wsi_metric is not None and not isinstance(wsi_metric, WSIMetricFactory):
+                raise ConfigurationError("WSI metrics must be of type WSIMetricFactory")
 
             self._tile_metric = tile_metric
             self._wsi_metrics = wsi_metric
@@ -72,7 +72,7 @@ class AhCoreLightningModule(pl.LightningModule):
         self._data_description = data_description
 
     @property
-    def wsi_metrics(self) -> WSIMetric | None:
+    def wsi_metrics(self) -> WSIMetricFactory | None:
         return self._wsi_metrics
 
     @property
