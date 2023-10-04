@@ -11,8 +11,9 @@ import pytorch_lightning as pl
 import torch.optim.optimizer
 from pytorch_lightning.trainer.states import TrainerFn
 from torch import nn
-from torch.utils.tensorboard import SummaryWriter
 
+from ahcore.exceptions import ConfigurationError
+from ahcore.metrics import TileMetric, WSIMetric
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 
@@ -36,7 +37,7 @@ class AhCoreLightningModule(pl.LightningModule):
         data_description: DataDescription,
         loss: nn.Module | None = None,
         augmentations: dict[str, nn.Module] | None = None,
-        metrics: dict[str, nn.Module] | None = None,
+        metrics: dict[str, WSIMetric | TileMetric] | None = None,
         scheduler: Any | None = None,  # noqa
     ):
         super().__init__()
@@ -58,13 +59,20 @@ class AhCoreLightningModule(pl.LightningModule):
 
         self._loss = loss
         if metrics is not None:
-            self._metrics = metrics.get("tile_level")
-            self._wsi_metrics = metrics.get("wsi_level")
+            tile_metric = metrics.get("tile_level")
+            wsi_metric = metrics.get("wsi_level", None)
+            if tile_metric is not None and not isinstance(tile_metric, TileMetric):
+                raise ConfigurationError("Tile metrics must be of type TileMetric")
+            if wsi_metric is not None and not isinstance(wsi_metric, WSIMetric):
+                raise ConfigurationError("WSI metrics must be of type WSIMetric")
+
+            self._tile_metric = tile_metric
+            self._wsi_metrics = wsi_metric
 
         self._data_description = data_description
 
     @property
-    def wsi_metrics(self):
+    def wsi_metrics(self) -> WSIMetric | None:
         return self._wsi_metrics
 
     @property
@@ -80,13 +88,6 @@ class AhCoreLightningModule(pl.LightningModule):
     def data_description(self) -> DataDescription:
         return self._data_description
 
-    @property
-    def _tensorboard(self) -> SummaryWriter | None:
-        _tensorboard = [_ for _ in self.loggers if isinstance(_, pl.loggers.tensorboard.TensorBoardLogger)]
-        if not _tensorboard:
-            return None
-        return _tensorboard[0].experiment
-
     def _compute_metrics(
         self,
         prediction: torch.Tensor,
@@ -94,11 +95,11 @@ class AhCoreLightningModule(pl.LightningModule):
         roi: torch.Tensor | None,
         stage: TrainerFn | str,
     ) -> dict[str, torch.Tensor]:
-        if not self._metrics:
+        if not self._tile_metric:
             return {}
 
         _stage = stage.value if isinstance(stage, TrainerFn) else stage
-        metrics = {f"{_stage}/{k}": v for k, v in self._metrics(prediction, target, roi).items()}
+        metrics = {f"{_stage}/{k}": v for k, v in self._tile_metric(prediction, target, roi).items()}
         return metrics
 
     def do_step(self, batch, batch_idx: int, stage: TrainerFn | str) -> dict[str, Any]:
@@ -169,11 +170,6 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> dict[str, Any]:
-        # TODO: This is problematic as you first need to pass through the augmentations to get the correct shape
-        # if self.global_step == 0:
-        #     if self._tensorboard:
-        #         self._tensorboard.add_graph(self._model, batch["image"])
-
         output = self.do_step(batch, batch_idx, stage="fit")
         return output
 

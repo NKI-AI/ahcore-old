@@ -6,7 +6,7 @@ All the relevant loss modules. In ahcore, losses are returned per sample in the 
 """
 from __future__ import annotations
 
-from typing import Callable, Union
+from typing import Callable, Optional, Union, cast
 
 import numpy as np
 import torch
@@ -19,14 +19,19 @@ class LossFactory(nn.Module):
 
     def __init__(
         self,
-        losses: list[dict[str, Callable]],
+        losses: list[
+            dict[
+                str,
+                Callable[[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]], torch.Tensor],
+            ]
+        ],
         weights: list[Union[torch.Tensor, float]] | None = None,
         class_proportions: torch.Tensor | None = None,
     ):
         """
         Parameters
         ----------
-        losses : list[dict[str, Callable]
+        losses : list[dict[str, Callable[[torch.Tensor, torch.Tensor, torch.Tensor | None], torch.Tensor]]
             List of losses which are functions which accept `(input, target, roi, weight)`. The weight will be
             applied per class.
         weights : list
@@ -61,9 +66,10 @@ class LossFactory(nn.Module):
     def forward(self, input: torch.Tensor, target: torch.Tensor, roi: torch.Tensor | None = None) -> torch.Tensor:
         total_loss = sum(
             [
-                weight.to(input.device) * curr_loss(input, target, roi, weight=self._class_weights)
+                weight.to(input.device) * curr_loss(input, target, roi, self._class_weights)
                 for weight, curr_loss in zip(self._weights, self._losses)
-            ]
+            ],
+            torch.tensor([0.0] * input.shape[0], device=input.device),  # Default value for sum
         )
         return total_loss
 
@@ -146,7 +152,10 @@ def cross_entropy(
         return _cross_entropy.sum(dim=(1, 2)) / roi_sum
 
     k = int(round(float(roi_sum.cpu()) * topk))
-    return torch.topk(_cross_entropy.view(input.shape[0], -1), k).values.sum(dim=1) / (roi_sum * topk)
+    # top-k returns Any
+    return cast(torch.Tensor, torch.topk(_cross_entropy.view(input.shape[0], -1), k).values.sum(dim=1)) / (
+        roi_sum * topk
+    )
 
 
 def soft_dice(
@@ -203,7 +212,7 @@ def soft_dice(
     if weight is not None:
         raise NotImplementedError("Weight not yet implemented for dice loss.")
 
-    if not torch.is_tensor(input):
+    if not torch.is_tensor(input):  # type: ignore[no-untyped-call]
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")

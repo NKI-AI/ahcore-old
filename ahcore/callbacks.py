@@ -30,6 +30,7 @@ from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
 from ahcore.lit_module import AhCoreLightningModule
+from ahcore.metrics import WSIMetric
 from ahcore.readers import H5FileImageReader, StitchingMode
 from ahcore.transforms.pre_transforms import one_hot_encoding
 from ahcore.utils.data import DataDescription, GridDescription
@@ -146,7 +147,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
 
         # We check if the region is not a Point, otherwise this annotation is always included
         # Else, we compute if there is a positive area in the region.
-        return sum(_.area if _ is not isinstance(_, (Point, MultiPoint)) else 1.0 for _ in region_mask) > 0
+        return bool(sum(_.area if _ is not isinstance(_, (Point, MultiPoint)) else 1.0 for _ in region_mask) > 0)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = {}
@@ -320,7 +321,7 @@ class WriteH5Callback(Callback):
         outputs: Any,
         batch: Any,
         batch_idx: int,
-        dataloader_idx=0,
+        dataloader_idx: int = 0,
     ) -> None:
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
@@ -462,13 +463,14 @@ def tile_process_function(x: npt.NDArray[np.float_]) -> GenericArray:
 
 
 class WriteTiffCallback(Callback):
-    def __init__(self, max_concurrent_writers: int):
+    def __init__(self, max_concurrent_writers: int, tile_size: tuple[int, int] = (1024, 1024)):
         self._pool = multiprocessing.Pool(max_concurrent_writers)
         self._logger = get_logger(type(self).__name__)
         self._dump_dir: Optional[Path] = None
         self.__write_h5_callback_index = -1
 
-        self._tile_size = (1024, 1024)
+        self._model_name: str | None = None
+        self._tile_size = tile_size
 
         # TODO: Handle tile operation such that we avoid repetitions.
 
@@ -490,6 +492,12 @@ class WriteTiffCallback(Callback):
         pl_module: pl.LightningModule,
         stage: Optional[str] = None,
     ) -> None:
+        if not isinstance(pl_module, AhCoreLightningModule):
+            # TODO: Make a AhCoreCallback with these features
+            raise ValueError("AhCoreLightningModule required for WriteTiffCallback.")
+
+        self._model_name = pl_module.name
+
         _callback: Optional[WriteH5Callback] = None
         for idx, callback in enumerate(trainer.callbacks):  # type: ignore
             if isinstance(callback, WriteH5Callback):
@@ -625,7 +633,7 @@ def compute_metrics_for_case(
             wsi_metrics_dictionary["tiff_fn"] = str(filename.with_suffix(".tiff"))
         if filename.is_file():
             wsi_metrics_dictionary["h5_fn"] = str(filename)
-        for metric in wsi_metrics._metrics:
+        for metric in wsi_metrics._tile_metric:
             metric.get_wsi_score(str(filename))
             wsi_metrics_dictionary[metric.name] = {
                 class_names[class_idx]: metric.wsis[str(filename)][class_idx][metric.name].item()
@@ -671,10 +679,12 @@ class ComputeWsiMetricsCallback(Callback):
         self._save_per_image = save_per_image
         self._filenames: dict[Path, Path] = {}
 
-        self._wsi_metrics = None
+        self._wsi_metrics: WSIMetric | None = None
         self._class_names: dict[int, str] = {}
         self._data_manager = None
         self._validate_filenames_gen = None
+
+        self._model_name: str | None = None
 
         self._validate_metadata_gen: Generator[ImageMetadata, None, None] | None = None
 
@@ -687,7 +697,11 @@ class ComputeWsiMetricsCallback(Callback):
         pl_module: pl.LightningModule,
         stage: Optional[str] = None,
     ) -> None:
-        pl_module = cast(AhCoreLightningModule, pl_module)
+        if not isinstance(pl_module, AhCoreLightningModule):
+            # TODO: Make a AhCoreCallback with these features
+            raise ValueError("AhCoreLightningModule required for WriteTiffCallback.")
+
+        self._model_name = pl_module.name
 
         _callback: Optional[WriteH5Callback] = None
         for idx, callback in enumerate(trainer.callbacks):  # type: ignore
@@ -702,6 +716,9 @@ class ComputeWsiMetricsCallback(Callback):
             )
 
         self._dump_dir = _callback.dump_dir
+
+        if pl_module.wsi_metrics is None:
+            raise ValueError("WSI metrics are not set.")
 
         self._wsi_metrics = pl_module.wsi_metrics
         self._data_description = trainer.datamodule.data_description  # type: ignore
@@ -840,16 +857,16 @@ class ComputeWsiMetricsCallback(Callback):
             raise ValueError("Dump directory is not set.")
         if not self._wsi_metrics:
             raise ValueError("WSI metrics are not set.")
+        assert self._model_name  # This should be set in the setup()
 
         # Ensure that all h5 files have been written
         self._logger.debug("Computing metrics for %s predictions", len(self._filenames))
         computed_metrics = self.compute_metrics(trainer, pl_module)
         metrics = self._wsi_metrics.get_average_score(computed_metrics)
-        with open(
-            self._dump_dir / "outputs" / pl_module.name / f"step_{pl_module.global_step}" / "results.json",
-            "w",
-            encoding="utf-8",
-        ) as json_file:
+        results_json_fn = (
+            self._dump_dir / "outputs" / self._model_name / f"step_{pl_module.global_step}" / "results.json"
+        )
+        with open(results_json_fn, "w", encoding="utf-8") as json_file:
             json.dump(self._dump_list, json_file, indent=2)
         self._wsi_metrics.reset()
         # Reset stuff

@@ -13,7 +13,7 @@ from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 
 
-class AhCoreMetric:
+class TileMetric:
     def __init__(self, data_description: DataDescription) -> None:
         """Initialize the metric class"""
         self._data_description = data_description
@@ -26,7 +26,7 @@ class AhCoreMetric:
         """Call metric computation"""
 
 
-class DiceMetric(AhCoreMetric):
+class DiceMetric(TileMetric):
     def __init__(self, data_description: DataDescription) -> None:
         r"""
         Metric computing dice over classes. The classes are derived from the index_map that's defined in the
@@ -88,7 +88,7 @@ class MetricFactory:
     (e.g., segmentation, detection, whole-slide-level classification.
     """
 
-    def __init__(self, metrics: list[AhCoreMetric]) -> None:
+    def __init__(self, metrics: list[TileMetric]) -> None:
         """
         Parameters
         ----------
@@ -123,7 +123,7 @@ class MetricFactory:
             output.update(metric(predictions, target, roi=roi))
         return output
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}(metrics={self._metrics})"
 
 
@@ -170,7 +170,7 @@ class WSIDiceMetric(WSIMetric):
         else:
             _index_map = self._data_description.index_map
 
-        _label_to_class = {v: k for k, v in _index_map.items()}
+        _label_to_class: dict[int, str] = {v: k for k, v in _index_map.items()}
         _label_to_class[0] = "background"
         self._label_to_class = _label_to_class
 
@@ -201,7 +201,7 @@ class WSIDiceMetric(WSIMetric):
             cardinality = self.wsis[wsi_name][class_idx]["cardinality"]
             self.wsis[wsi_name][class_idx]["wsi_dice"] = _compute_dice(intersection, cardinality)
 
-    def _get_overall_dice(self):
+    def _get_overall_dice(self) -> dict[int, float]:
         """
         Compute the overall dice score (per class) over all the WSIs
 
@@ -210,11 +210,11 @@ class WSIDiceMetric(WSIMetric):
         dict
             Dictionary with the overall dice scores across wsis per class
         """
-        overall_dices = {
+        overall_dices: dict[int, dict[str, float]] = {
             class_idx: {
-                "total_intersection": 0,
-                "total_cardinality": 0,
-                "overall_dice": 0,
+                "total_intersection": 0.0,
+                "total_cardinality": 0.0,
+                "overall_dice": 0.0,
             }
             for class_idx in range(self._num_classes)
         }
@@ -231,7 +231,7 @@ class WSIDiceMetric(WSIMetric):
             for class_idx in overall_dices.keys()
         }
 
-    def _get_dice_averaged_over_total_wsis(self):
+    def _get_dice_averaged_over_total_wsis(self) -> dict[int, float]:
         """
         Compute the dice score (per class) averaged over all the WSIs
 
@@ -240,7 +240,7 @@ class WSIDiceMetric(WSIMetric):
         dict
             Dictionary with the dice scores averaged over all the WSIs per class
         """
-        dices = {class_idx: [] for class_idx in range(self._num_classes)}
+        dices: dict[int, list[float]] = {class_idx: [] for class_idx in range(self._num_classes)}
         for wsi_name in self.wsis:
             self.get_wsi_score(wsi_name)
             for class_idx in range(self._num_classes):
@@ -254,7 +254,7 @@ class WSIDiceMetric(WSIMetric):
 
     def get_average_score(
         self, precomputed_output: list[list[dict[str, dict[str, float]]]] | None = None
-    ) -> dict[str, float]:
+    ) -> dict[Any, Any]:
         if (
             precomputed_output is not None
         ):  # Used for multiprocessing, where multiple instances of this class are created

@@ -125,7 +125,7 @@ class H5FileImageWriter:
 
     def add_associated_images(
         self, images: tuple[tuple[str, npt.NDArray[np.uint8]], ...], description: Optional[str] = None
-    ):
+    ) -> None:
         """Adds associated images to the h5 file."""
 
         # Create a compound dataset "associated_images"

@@ -4,55 +4,35 @@ Reader classes.
 - `H5FileImageReader`: to read files written using the `ahcore.writers.H5FileImageWriter`.
 
 """
+import errno
 import json
 import math
+import os
 from enum import Enum
 from pathlib import Path
 from types import TracebackType
-from typing import Literal, Optional, Type
+from typing import Literal, Optional, Type, cast
 
 import h5py
 import numpy as np
+import numpy.typing as npt
 from scipy.ndimage import map_coordinates
 
 from ahcore.utils.io import get_logger
-from ahcore.utils.types import GenericArray
+from ahcore.utils.types import BoundingBoxType, GenericArray
 
 logger = get_logger(__name__)
 
 
-class StitchingMode(Enum):
-    CROP = 0
-    AVERAGE = 1
-    MAXIMUM = 2
+class StitchingMode(str, Enum):
+    CROP = "crop"
+    AVERAGE = "average"
+    MAXIMUM = "maximum"
 
 
-class PasteMode(Enum):
-    OVERWRITE = 0
-    ADD = 1
-
-
-# def crop_to_bbox(array, bbox):
-#     (x, y), (h, w) = bbox
-#     return array[y : y + h, x : x + w]
-
-
-def crop_to_bbox(array, bbox):
+def crop_to_bbox(array: GenericArray, bbox: BoundingBoxType) -> GenericArray:
     (start_x, start_y), (width, height) = bbox
     return array[:, start_y : start_y + height, start_x : start_x + width]
-
-
-def paste_region(array, region, location, paste_mode=PasteMode.OVERWRITE):
-    # TODO: Unused function.
-    x, y = location
-    h, w = region.shape[:2]
-
-    if paste_mode == PasteMode.OVERWRITE:
-        array[y : y + h, x : x + w] = region
-    elif paste_mode == PasteMode.ADD:
-        array[y : y + h, x : x + w] += region
-    else:
-        raise ValueError("Unsupported paste mode")
 
 
 class H5FileImageReader:
@@ -60,7 +40,7 @@ class H5FileImageReader:
         self._filename = filename
         self._stitching_mode = stitching_mode
 
-        self.__empty_tile = None
+        self.__empty_tile: GenericArray | None = None
 
         self._h5file: Optional[h5py.File] = None
         self._metadata = None
@@ -73,7 +53,7 @@ class H5FileImageReader:
         self._stride = None
 
     @classmethod
-    def from_file_path(cls, filename, stitching_mode: StitchingMode = StitchingMode.CROP):
+    def from_file_path(cls, filename: Path, stitching_mode: StitchingMode = StitchingMode.CROP) -> "H5FileImageReader":
         return cls(filename=filename, stitching_mode=stitching_mode)
 
     @property
@@ -109,8 +89,21 @@ class H5FileImageReader:
         return self._mpp / mpp
 
     def _open_file(self) -> None:
-        self._h5file = h5py.File(self._filename, "r")
-        self._metadata = json.loads(self._h5file.attrs["metadata"])
+        if not self._filename.is_file():
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(self._filename))
+
+        try:
+            self._h5file = h5py.File(self._filename, "r")
+        except OSError as e:
+            logger.error(f"Could not open file {self._filename}: {e}")
+            raise e
+
+        try:
+            self._metadata = json.loads(self._h5file.attrs["metadata"])
+        except KeyError as e:
+            logger.error(f"Could not read metadata from file {self._filename}: {e}")
+            raise e
+
         if not self._metadata:
             raise ValueError("Metadata of h5 file is empty.")
         self._mpp = self._metadata["mpp"]
@@ -124,14 +117,17 @@ class H5FileImageReader:
             self._tile_size[1] - self._tile_overlap[1],
         )
 
-    def __enter__(self):
+    def __enter__(self) -> "H5FileImageReader":
         if self._h5file is None:
             self._open_file()
         return self
 
-    def _empty_tile(self):
+    def _empty_tile(self) -> GenericArray:
         if self.__empty_tile is not None:
             return self.__empty_tile
+
+        # When this happens we would already be in the read_region, and self._num_channels would be populated.
+        assert self._num_channels
 
         self.__empty_tile = np.zeros((self._num_channels, *self._tile_size), dtype=self._dtype)
         return self.__empty_tile
@@ -193,7 +189,8 @@ class H5FileImageReader:
         # Interpolate using map_coordinates for all channels
         grid = np.mgrid[: raw_region.shape[0]]
         coordinates = np.concatenate([grid[:, None, None], coordinates], axis=0)
-        rescaled_region = map_coordinates(raw_region, coordinates, order=order)
+        # scipy doesn't have proper typing yet
+        rescaled_region = cast(GenericArray, map_coordinates(raw_region, coordinates, order=order))
 
         return rescaled_region
 
@@ -301,7 +298,7 @@ class H5FileImageReader:
     def close(self) -> None:
         if self._h5file is not None:
             self._h5file.close()  # Close the file in close
-        self._h5file = None  # Reset the h5file attribute
+        del self._h5file  # Reset the h5file attribute
 
     def __exit__(
         self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]

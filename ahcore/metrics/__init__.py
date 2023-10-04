@@ -1,9 +1,10 @@
 "Ahcore's metrics"
-from ahcore.metrics.metrics import AhCoreMetric, DiceMetric, MetricFactory, WSIMetricFactory
+from ahcore.metrics.metrics import DiceMetric, MetricFactory, TileMetric, WSIMetric, WSIMetricFactory
 
 __all__ = [
-    "AhCoreMetric",
+    "TileMetric",
     "DiceMetric",
     "MetricFactory",
     "WSIMetricFactory",
+    "WSIMetric",
 ]

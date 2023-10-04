@@ -21,7 +21,7 @@ import rich.syntax
 import rich.tree
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from omegaconf.errors import InterpolationKeyError
-from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities import rank_zero_only  # type: ignore[attr-defined]
 
 
 def get_logger(name: str = __name__) -> logging.Logger:
@@ -48,7 +48,7 @@ def get_logger(name: str = __name__) -> logging.Logger:
 logger = get_logger(__name__)
 
 
-def debug_function(x):
+def debug_function(x: int) -> int:
     """
     Function to use for debugging (e.g. github workflow testing)
     :param x:
@@ -57,7 +57,7 @@ def debug_function(x):
     return x**2
 
 
-def validate_config(cfg: Any):
+def validate_config(cfg: Any) -> None:
     if isinstance(cfg, ListConfig):
         for x in cfg:
             validate_config(x)
@@ -73,7 +73,7 @@ def validate_config(cfg: Any):
                 continue
 
 
-@rank_zero_only
+@rank_zero_only  # type: ignore[misc]
 def print_config(
     config: DictConfig,
     fields: Sequence[str] = (
@@ -158,7 +158,7 @@ def extras(config: DictConfig) -> None:
             config.datamodule.num_workers = 0
 
 
-@rank_zero_only
+@rank_zero_only  # type:ignore[misc]
 def log_hyperparameters(
     config: DictConfig,
     model: pl.LightningModule,
