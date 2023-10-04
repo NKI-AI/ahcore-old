@@ -123,7 +123,9 @@ class DlupDataModule(pl.LightningDataModule):
             gen = datasets_from_data_description(
                 db_manager=self._data_manager,
                 data_description=self.data_description,
-                transform=self._pre_transform(True if stage != "predict" else False),  # This bool adds the target
+                transform=self._pre_transform(
+                    requires_target=True if stage != "predict" else False  # type: ignore
+                ),  # This bool adds the target
                 stage=stage,
             )
             for dataset in gen:
