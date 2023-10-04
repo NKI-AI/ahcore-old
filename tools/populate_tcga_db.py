@@ -6,6 +6,7 @@ from dlup import SlideImage
 from dlup.experimental_backends import ImageBackend
 
 from ahcore.utils.database_models import (
+    CategoryEnum,
     Image,
     ImageAnnotations,
     ImageLabels,
@@ -52,7 +53,9 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
             session.flush()
 
             # For now random.
-            split_category = random.choices(["fit", "validate", "test"], [70, 20, 10])[0]
+            split_category = random.choices(
+                [CategoryEnum.TRAIN, CategoryEnum.VALIDATE, CategoryEnum.TEST], [70, 20, 10]
+            )[0]
 
             split = Split(
                 category=split_category,
@@ -60,6 +63,7 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
                 split_definition=split_definition,
             )
             session.add(split)
+            session.flush()
 
         # Add only the label if it does not exist yet.
         existing_label = session.query(PatientLabels).filter_by(key="study", patient_id=patient.id).first()
@@ -108,7 +112,7 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
 
 
 if __name__ == "__main__":
-    annotation_folder = Path("tissue_subtypes/v20230228_combined/")
+    annotation_folder = Path("tissue_subtypes/v20230228_combined_v2/")
     image_folder = Path("/data/groups/aiforoncology/archive/pathology/TCGA/images/")
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
     with open_db("manifest.db") as session:

@@ -7,7 +7,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
 
 
 class CategoryEnum(PyEnum):
-    TRAIN = "train"
+    TRAIN = "fit"
     VALIDATE = "validate"
     TEST = "test"
 
@@ -182,7 +182,7 @@ class SplitDefinitions(Base):
     last_updated = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     version = Column(String, nullable=False)
     description = Column(String)
-    splits: Mapped["Split"] = relationship("Split", back_populates="split_definition")
+    splits: Mapped[List["Split"]] = relationship("Split", back_populates="split_definition")
 
 
 class Split(Base):
@@ -195,8 +195,9 @@ class Split(Base):
     created = Column(DateTime(timezone=True), default=func.now())
     last_updated = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     category: Column[CategoryEnum] = Column(Enum(CategoryEnum), nullable=False)
-    patient_id = Column(Integer, ForeignKey("patient.id"))
 
+    patient_id = Column(Integer, ForeignKey("patient.id"))
     patient: Mapped["Patient"] = relationship("Patient", back_populates="split")
-    split_definition_id = Column(Integer, ForeignKey("split_definitions.id"))
+
+    split_definition_id = Column(Integer, ForeignKey("split_definitions.id"), nullable=False)
     split_definition: Mapped["SplitDefinitions"] = relationship("SplitDefinitions", back_populates="splits")

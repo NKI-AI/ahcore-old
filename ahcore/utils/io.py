@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import os
 import warnings
+from enum import Enum
 from pathlib import Path
 from types import FunctionType
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence, Type
 
 import pytorch_lightning as pl
 import rich
@@ -200,6 +201,13 @@ def fullname(obj: Any) -> str:
     if module is None or module == str.__class__.__module__:  # don't want to return 'builtins'
         return cls.__name__
     return module + "." + cls.__name__
+
+
+def get_enum_key_from_value(value: str, enum_class: Type[Enum]) -> Optional[str]:
+    for enum_member in enum_class:
+        if enum_member.value == value:
+            return enum_member.name
+    return None
 
 
 def get_cache_dir() -> Path:

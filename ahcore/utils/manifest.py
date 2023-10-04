@@ -22,8 +22,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ahcore.exceptions import RecordNotFoundError
 from ahcore.utils.data import DataDescription
-from ahcore.utils.database_models import Base, Image, ImageAnnotations, Manifest, Mask, Patient, Split, SplitDefinitions
-from ahcore.utils.io import get_logger
+from ahcore.utils.database_models import (
+    Base,
+    CategoryEnum,
+    Image,
+    ImageAnnotations,
+    Manifest,
+    Mask,
+    Patient,
+    Split,
+    SplitDefinitions,
+)
+from ahcore.utils.io import get_enum_key_from_value, get_logger
 from ahcore.utils.rois import compute_rois
 from ahcore.utils.types import DlupDatasetSample, PositiveFloat, PositiveInt, Rois
 
@@ -161,7 +171,8 @@ class DataManager:
         )
 
         if split_category is not None:
-            query = query.filter(Split.category == split_category)
+            split_category_key = get_enum_key_from_value(split_category, CategoryEnum)
+            query = query.filter(Split.category == split_category_key)
 
         patients = query.all()
 
