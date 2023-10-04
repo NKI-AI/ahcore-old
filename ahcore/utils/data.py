@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple
 
 from pydantic import BaseModel
 
-from ahcore.utils.types import PositiveFloat, PositiveInt
+from ahcore.utils.types import NonNegativeInt, PositiveFloat, PositiveInt
 
 
 def basemodel_to_uuid(base_model: BaseModel) -> uuid.UUID:
@@ -44,7 +44,7 @@ def basemodel_to_uuid(base_model: BaseModel) -> uuid.UUID:
 class GridDescription(BaseModel):
     mpp: Optional[PositiveFloat]
     tile_size: Tuple[PositiveInt, PositiveInt]
-    tile_overlap: Tuple[PositiveInt, PositiveInt]
+    tile_overlap: Tuple[NonNegativeInt, NonNegativeInt]
     output_tile_size: Optional[Tuple[int, int]] = None
 
 
