@@ -1,8 +1,5 @@
 # AI for Oncology Core for Computational Pathology
-[![Tox](https://github.com/NKI-AI/ahcore/actions/workflows/tox.yml/badge.svg)](https://github.com/NKI-AI/ahcore/actions/workflows/tox.yml)
-[![mypy](https://github.com/NKI-AI/ahcore/actions/workflows/mypy.yml/badge.svg)](https://github.com/NKI-AI/ahcore/actions/workflows/mypy.yml)
-[![Pylint](https://github.com/NKI-AI/ahcore/actions/workflows/pylint.yml/badge.svg)](https://github.com/NKI-AI/ahcore/actions/workflows/pylint.yml)
-[![Black](https://github.com/NKI-AI/ahcore/actions/workflows/black.yml/badge.svg)](https://github.com/NKI-AI/ahcore/actions/workflows/black.yml)
+[![Run Precommit Checks on PR Approval](https://github.com/NKI-AI/ahcore/actions/workflows/precommit_checks.yml/badge.svg)](https://github.com/NKI-AI/ahcore/actions/workflows/precommit_checks.yml)
 [![codecov](https://codecov.io/gh/NKI-AI/ahcore/branch/main/graph/badge.svg?token=OIJ7F9G7OO)](https://codecov.io/gh/NKI-AI/ahcore)
 
 Ahcore are the [AI for Oncology](https://aiforoncology.nl) core components for computational pathology.
