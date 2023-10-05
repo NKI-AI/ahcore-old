@@ -24,7 +24,10 @@ def get_patient_from_tcga_id(tcga_filename: str) -> str:
     return tcga_filename[:12]
 
 
-def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder: Path, path_to_mapping: Path):
+def populate_from_annotated_tcga(
+    session, image_folder: Path, annotation_folder: Path, path_to_mapping: Path, predict: bool = False
+):
+    """This is a basic example, adjust to your needs."""
     # TODO: We should do the mpp as well here
 
     with open(path_to_mapping, "r") as f:
@@ -40,8 +43,9 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
     for folder in annotation_folder.glob("TCGA*"):
         patient_code = get_patient_from_tcga_id(folder.name)
 
-        annotation_path = folder / "annotations.json"
-        mask_path = folder / "roi.json"
+        if not predict:
+            annotation_path = folder / "annotations.json"
+            mask_path = folder / "roi.json"
 
         # Only add patient if it doesn't exist
         existing_patient = session.query(Patient).filter_by(patient_code=patient_code).first()  # type: ignore
@@ -53,9 +57,12 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
             session.flush()
 
             # For now random.
-            split_category = random.choices(
-                [CategoryEnum.TRAIN, CategoryEnum.VALIDATE, CategoryEnum.TEST], [70, 20, 10]
-            )[0]
+            if predict:
+                split_category = CategoryEnum.PREDICT
+            else:
+                split_category = random.choices(
+                    [CategoryEnum.TRAIN, CategoryEnum.VALIDATE, CategoryEnum.TEST], [70, 20, 10]
+                )[0]
 
             split = Split(
                 category=split_category,
@@ -98,11 +105,12 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
         session.add(image)
         session.flush()  # Flush so that Image ID is populated for future records
 
-        mask = Mask(filename=str(mask_path), reader="GEOJSON", image=image)
-        session.add(mask)
+        if not predict:
+            mask = Mask(filename=str(mask_path), reader="GEOJSON", image=image)
+            session.add(mask)
 
-        image_annotation = ImageAnnotations(filename=str(annotation_path), reader="GEOJSON", image=image)
-        session.add(image_annotation)
+            image_annotation = ImageAnnotations(filename=str(annotation_path), reader="GEOJSON", image=image)
+            session.add(image_annotation)
 
         label_data = "cancer" if random.choice([True, False]) else "benign"  # Randomly decide if it's cancer or benign
         image_label = ImageLabels(label_data=label_data, image=image)
@@ -112,8 +120,8 @@ def populate_from_annotated_tcga(session, image_folder: Path, annotation_folder:
 
 
 if __name__ == "__main__":
-    annotation_folder = Path("tissue_subtypes/v20230228_combined_v2/")
+    annotation_folder = Path("tissue_subtypes/v20230228_debug/")
     image_folder = Path("/data/groups/aiforoncology/archive/pathology/TCGA/images/")
     path_to_mapping = Path("/data/groups/aiforoncology/archive/pathology/TCGA/identifier_mapping.json")
     with open_db("manifest.db") as session:
-        populate_from_annotated_tcga(session, image_folder, annotation_folder, path_to_mapping)
+        populate_from_annotated_tcga(session, image_folder, annotation_folder, path_to_mapping, predict=True)

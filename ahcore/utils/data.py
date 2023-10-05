@@ -49,9 +49,9 @@ class GridDescription(BaseModel):
 
 
 class DataDescription(BaseModel):
-    mask_label: Optional[str]
-    mask_threshold: Optional[float]  # This is only used for training
-    roi_name: Optional[str]
+    mask_label: Optional[str] = None
+    mask_threshold: Optional[float] = None  # This is only used for training
+    roi_name: Optional[str] = None
     num_classes: PositiveInt
     data_dir: Path
     manifest_database_uri: str
