@@ -100,7 +100,7 @@ def parse_annotations_from_record(
 
 def get_mask_and_annotations_from_record(
     annotations_root: Path, record: Image
-) -> tuple[_AnnotationReturnTypes, _AnnotationReturnTypes]:
+) -> tuple[_AnnotationReturnTypes | None, _AnnotationReturnTypes | None]:
     """
     Get the mask and annotations from a record of type Image.
 
@@ -116,12 +116,18 @@ def get_mask_and_annotations_from_record(
     tuple[WsiAnnotations, WsiAnnotations]
         The mask and annotations.
     """
-    _masks = parse_annotations_from_record(annotations_root, record.masks)
-    _annotations = parse_annotations_from_record(annotations_root, record.annotations)
+    if record.masks:
+        _masks = parse_annotations_from_record(annotations_root, record.masks)
+    else:
+        _masks = None  # should we raise an error here if it is not in predict?
+    if record.annotations:
+        _annotations = parse_annotations_from_record(annotations_root, record.annotations)
+    else:
+        _annotations = None
     return _masks, _annotations
 
 
-def _get_rois(mask: WsiAnnotations, data_description: DataDescription, stage: str) -> Optional[Rois]:
+def _get_rois(mask: WsiAnnotations | None, data_description: DataDescription, stage: str) -> Optional[Rois]:
     if (mask is None) or (stage != "fit") or (not data_description.convert_mask_to_rois):
         return None
 

@@ -1,0 +1,42 @@
+_target_: ahcore.utils.data.DataDescription
+data_dir: ${oc.env:DATA_DIR}
+annotations_dir: ${oc.env:ANNOTATIONS_DIR}/tissue_subtypes/v20230228_debug # specify in .env
+manifest_database_uri: sqlite:///${oc.env:MANIFEST_PATH}/tissue_subtypes/v20230228_debug/manifest.db
+manifest_name: "v20230228"
+split_version: "v1"
+use_roi: False
+# Eg. 512 x 512 is: tile_size 726 x 726 and tile_overlap 107 x 107
+# Tiles are cropped in the transforms downstream, to ensure the patch is completely visible, they are extracted
+# slightly larger (sqrt 2) with sufficient overlap so we have a 512 stride.
+training_grid:
+  mpp: 1.0
+  output_tile_size: [726, 726]
+  tile_overlap: [0, 0]
+  tile_size: [512, 512]
+inference_grid:
+  mpp: 1.0
+  tile_size: [512, 512]
+  tile_overlap: [128, 128]
+
+num_classes: 4
+use_class_weights: false  # Use the class weights in the loss
+remap_labels:
+  stroma: stroma
+  tumor: tumor
+  inflamed: stroma
+  dcis: tumor
+  lymphoid aggregates: ignore
+  dcis immune cells: stroma
+  necrotic areas: ignore
+  normal glands: stroma
+  blood vessels: stroma
+  fat cell area: ignore
+  red blood cells: stroma
+  fibrosis areas: ignore
+  artefacts: ignore
+  other: ignore
+
+index_map:
+  stroma: 1
+  tumor: 2
+  ignore: 3
