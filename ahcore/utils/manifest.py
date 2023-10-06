@@ -61,7 +61,7 @@ _AnnotationReaders: _AnnotationReadersDict = {
 
 def parse_annotations_from_record(
     annotations_root: Path, record: list[Mask] | list[ImageAnnotations]
-) -> _AnnotationReturnTypes:
+) -> _AnnotationReturnTypes | None:
     """
     Parse the annotations from a record of type ImageAnnotations.
 
@@ -77,8 +77,8 @@ def parse_annotations_from_record(
     WsiAnnotations
         The parsed annotations.
     """
-    if record is None:
-        return
+    if not record:
+        return None
     assert len(record) == 1
 
     valid_readers = list(_AnnotationReaders.keys())
@@ -116,14 +116,8 @@ def get_mask_and_annotations_from_record(
     tuple[WsiAnnotations, WsiAnnotations]
         The mask and annotations.
     """
-    if record.masks:
-        _masks = parse_annotations_from_record(annotations_root, record.masks)
-    else:
-        _masks = None  # should we raise an error here if it is not in predict?
-    if record.annotations:
-        _annotations = parse_annotations_from_record(annotations_root, record.annotations)
-    else:
-        _annotations = None
+    _masks = parse_annotations_from_record(annotations_root, record.masks)
+    _annotations = parse_annotations_from_record(annotations_root, record.annotations)
     return _masks, _annotations
 
 
