@@ -26,6 +26,7 @@ from dlup.data.transforms import RenameLabels, convert_annotations
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.trainer.states import TrainerFn
 from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
@@ -286,7 +287,7 @@ class WriteH5Callback(Callback):
         self._dump_dir = Path(dump_dir)
         self._max_queue_size = max_queue_size
         self._semaphore = Semaphore(max_concurrent_writers)
-        self._validation_index = 0
+        self._dataset_index = 0
 
         self._logger = get_logger(type(self).__name__)
 
@@ -314,7 +315,7 @@ class WriteH5Callback(Callback):
     def writers(self):
         return self._writers
 
-    def on_validation_batch_end(
+    def _batch_end(
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
@@ -322,7 +323,7 @@ class WriteH5Callback(Callback):
         batch: Any,
         batch_idx: int,
         dataloader_idx: int = 0,
-    ) -> None:
+    ):
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
             raise ValueError(
@@ -350,10 +351,18 @@ class WriteH5Callback(Callback):
                 self._semaphore.release()
 
             self._semaphore.acquire()
-            validate_dataset: ConcatDataset = trainer.datamodule.validate_dataset  # type: ignore
+
+            if trainer.state.fn == TrainerFn.VALIDATING:
+                total_dataset: ConcatDataset = trainer.datamodule.validate_dataset  # type: ignore
+            elif trainer.state.fn == TrainerFn.PREDICTING:
+                total_dataset: ConcatDataset = trainer.predict_dataloaders.dataset  # type: ignore
+            else:
+                raise NotImplementedError(
+                    f"TrainerFn {trainer.state.fn} is not supported for {self.__class__.__name__}."
+                )
 
             current_dataset: TiledROIsSlideImageDataset
-            current_dataset, _ = validate_dataset.index_to_dataset(self._validation_index)  # type: ignore
+            current_dataset, _ = total_dataset.index_to_dataset(self._dataset_index)  # type: ignore
             slide_image = current_dataset.slide_image
 
             data_description: DataDescription = pl_module.data_description  # type: ignore
@@ -395,17 +404,45 @@ class WriteH5Callback(Callback):
         coordinates_x, coordinates_y = batch["coordinates"]
         coordinates = torch.stack([coordinates_x, coordinates_y]).T.detach().cpu().numpy()
         self._writers[filename]["queue"].put((coordinates, prediction))
-        self._validation_index += prediction.shape[0]
+        self._dataset_index += prediction.shape[0]
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def _epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if self._current_filename is not None:
             self.__process_management()
             self._semaphore.release()
-            self._validation_index = 0
+            self._dataset_index = 0
         # Reset current filename to None for correct execution of subsequent validation loop
         self._current_filename = None
         # Clear all the writers from the current epoch
         self._writers = {}
+
+    def on_validation_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+
+    def on_predict_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._epoch_end(trainer, pl_module)
+
+    def on_predict_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._epoch_end(trainer, pl_module)
 
     @staticmethod
     def generator(
@@ -511,7 +548,7 @@ class WriteTiffCallback(Callback):
         assert _callback.dump_dir, "_callback.dump_dir should never be None after the setup."
         self._dump_dir = _callback.dump_dir
 
-    def on_validation_batch_end(
+    def _batch_end(
         self,
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
@@ -532,7 +569,7 @@ class WriteTiffCallback(Callback):
             )
             self._filenames[filename] = output_filename
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def _epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         assert self.dump_dir, "dump_dir should never be None here."
         self._logger.info("Writing TIFF files to %s", self.dump_dir / "outputs" / f"{pl_module.name}")
         results = []
@@ -563,6 +600,34 @@ class WriteTiffCallback(Callback):
         for result in results:
             result.get()  # Wait for the process to complete.
         self._filenames = {}  # Reset the filenames
+
+    def on_validation_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+
+    def on_predict_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._epoch_end(trainer, pl_module)
+
+    def on_predict_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        self._epoch_end(trainer, pl_module)
 
 
 # Create a data structure to hold all required information for each task
@@ -776,7 +841,9 @@ class ComputeWsiMetricsCallback(Callback):
                 "Either use batch_size=1 or ahcore.data.samplers.WsiBatchSampler."
             )
 
-    def compute_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> list[list[dict[str, dict[str, float]]]]:
+    def compute_metrics(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
+    ) -> list[list[dict[str, dict[str, float]]]]:
         assert self._dump_dir
         assert self._data_description
         assert self._validate_metadata

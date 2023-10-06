@@ -61,7 +61,7 @@ _AnnotationReaders: _AnnotationReadersDict = {
 
 def parse_annotations_from_record(
     annotations_root: Path, record: list[Mask] | list[ImageAnnotations]
-) -> _AnnotationReturnTypes:
+) -> _AnnotationReturnTypes | None:
     """
     Parse the annotations from a record of type ImageAnnotations.
 
@@ -77,8 +77,8 @@ def parse_annotations_from_record(
     WsiAnnotations
         The parsed annotations.
     """
-    if record is None:
-        return
+    if not record:
+        return None
     assert len(record) == 1
 
     valid_readers = list(_AnnotationReaders.keys())
@@ -100,7 +100,7 @@ def parse_annotations_from_record(
 
 def get_mask_and_annotations_from_record(
     annotations_root: Path, record: Image
-) -> tuple[_AnnotationReturnTypes, _AnnotationReturnTypes]:
+) -> tuple[_AnnotationReturnTypes | None, _AnnotationReturnTypes | None]:
     """
     Get the mask and annotations from a record of type Image.
 
@@ -121,7 +121,7 @@ def get_mask_and_annotations_from_record(
     return _masks, _annotations
 
 
-def _get_rois(mask: WsiAnnotations, data_description: DataDescription, stage: str) -> Optional[Rois]:
+def _get_rois(mask: WsiAnnotations | None, data_description: DataDescription, stage: str) -> Optional[Rois]:
     if (mask is None) or (stage != "fit") or (not data_description.convert_mask_to_rois):
         return None
 

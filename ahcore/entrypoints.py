@@ -218,9 +218,11 @@ def inference(config: DictConfig) -> None:
                 raise NotImplementedError(f"No augmentations target found in <{config.augmentations[stage]}>")
             logger.info(f"Instantiating {stage} augmentations <{config.augmentations[stage]._target_}>")  # noqa
             augmentations[stage] = hydra.utils.instantiate(
-                config.augmentations[stage], data_description=data_description
+                config.augmentations[stage],
+                data_description=data_description,
+                data_module=datamodule,
+                _convert_="object",
             )
-
     # Init lightning model
     if not config.lit_module.get("_target_"):
         raise NotImplementedError(f"No model target found in <{config.lit_module}>")
@@ -266,10 +268,7 @@ def inference(config: DictConfig) -> None:
 
     # Inference
     logger.info("Starting inference...")
-    predict_dataloader = datamodule.predict_dataloader()
-    for metadata, dataloader in predict_dataloader:
-        model.predict_metadata = metadata  # update the metadata to the current WSI
-        trainer.predict(model=model, dataloaders=dataloader)
+    trainer.predict(model=model, datamodule=datamodule)
 
     # Make sure everything closed properly
     logger.info("Finalizing...")

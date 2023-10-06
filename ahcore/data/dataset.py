@@ -166,6 +166,12 @@ class DlupDataModule(pl.LightningDataModule):
                 drop_last=True,
             )
 
+        elif stage == "predict":
+            batch_sampler = ahcore.data.samplers.WsiBatchSamplerPredict(
+                dataset=dataset,
+                batch_size=batch_size,
+            )
+
         else:
             batch_sampler = ahcore.data.samplers.WsiBatchSampler(
                 dataset=dataset,
@@ -233,6 +239,15 @@ class DlupDataModule(pl.LightningDataModule):
         assert self._validate_data_iterator
         return self._construct_concatenated_dataloader(
             self._validate_data_iterator, batch_size=batch_size, stage="test"
+        )
+
+    def predict_dataloader(self) -> Optional[DataLoader[DlupDatasetSample]]:
+        if not self._predict_data_iterator:
+            self.setup("predict")
+        batch_size = self._validate_batch_size if self._validate_batch_size else self._batch_size
+        assert self._predict_data_iterator
+        return self._construct_concatenated_dataloader(
+            self._predict_data_iterator, batch_size=batch_size, stage="predict"
         )
 
     def teardown(self, stage: str | None = None) -> None:

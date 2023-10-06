@@ -10,6 +10,7 @@ class CategoryEnum(PyEnum):
     TRAIN = "fit"
     VALIDATE = "validate"
     TEST = "test"
+    PREDICT = "predict"
 
 
 class Base(DeclarativeBase):

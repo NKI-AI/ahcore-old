@@ -183,13 +183,19 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        if self._augmentations:
+        if self._augmentations and "predict" in self._augmentations:
             batch = self._augmentations["predict"](batch)
 
-        inputs = batch["image"]
-        predictions = self._model(inputs)
-        gathered_predictions = self.all_gather(predictions)
-        return gathered_predictions
+        _relevant_dict = {k: v for k, v in batch.items() if k in self.RELEVANT_KEYS}
+        batch = {**batch, **self._get_inference_prediction(batch["image"])}
+        _prediction = batch["prediction"]
+        output = {"prediction": _prediction, **_relevant_dict}
+
+        # This is a sanity check. We expect the filenames to be constant across the batch.
+        filename = batch["path"][0]
+        if any([filename != f for f in batch["path"]]):
+            raise ValueError("Filenames are not constant across the batch.")
+        return output
 
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params=self.parameters())
