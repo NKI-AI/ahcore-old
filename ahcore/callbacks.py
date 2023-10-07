@@ -225,7 +225,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
 
 
 class _WriterMessage(TypedDict):
-    queue: Queue[Optional[tuple[Any, Any]]]  # pylint: disable=unsubscriptable-object
+    queue: Queue[Optional[tuple[GenericArray, GenericArray]]]  # pylint: disable=unsubscriptable-object
     writer: H5FileImageWriter
     process: Process
     connection: Connection
@@ -312,7 +312,7 @@ class WriteH5Callback(Callback):
         self._writers[self._current_filename]["queue"].close()
 
     @property
-    def writers(self):
+    def writers(self) -> dict[str, _WriterMessage]:
         return self._writers
 
     def _batch_end(
@@ -323,7 +323,7 @@ class WriteH5Callback(Callback):
         batch: Any,
         batch_idx: int,
         dataloader_idx: int = 0,
-    ):
+    ) -> None:
         filename = batch["path"][0]  # Filenames are constant across the batch.
         if any([filename != path for path in batch["path"]]):
             raise ValueError(
@@ -479,7 +479,10 @@ def _write_tiff(
     filename: Path,
     tile_size: tuple[int, int],
     tile_process_function: Callable[[GenericArray], GenericArray],
-    _iterator_from_reader,
+    generator_from_reader: Callable[
+        [H5FileImageReader, tuple[int, int], Callable[[GenericArray], GenericArray]],
+        Generator[GenericArray, None, None],
+    ],
 ) -> None:
     logger.debug("Writing TIFF %s", filename.with_suffix(".tiff"))
     with H5FileImageReader(filename, stitching_mode=StitchingMode.CROP) as h5_reader:
@@ -492,7 +495,7 @@ def _write_tiff(
             compression=TiffCompression.ZSTD,
             interpolator=Resampling.NEAREST,
         )
-        writer.from_tiles_iterator(_iterator_from_reader(h5_reader, tile_size, tile_process_function))
+        writer.from_tiles_iterator(generator_from_reader(h5_reader, tile_size, tile_process_function))
 
 
 def tile_process_function(x: npt.NDArray[np.float_]) -> GenericArray:
@@ -656,7 +659,7 @@ def prepare_task_data(
 
 def compute_metrics_for_case(
     task_data: TaskData,
-    class_names,
+    class_names: dict[int, str],
     data_description: DataDescription,
     wsi_metrics,
     save_per_image: bool,

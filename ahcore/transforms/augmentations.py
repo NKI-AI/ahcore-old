@@ -64,35 +64,6 @@ class MeanStdNormalizer(nn.Module):
         return output
 
 
-class Identity(K.AugmentationBase2D):
-    """
-    Identity transform.
-    """
-
-    def __init__(
-        self,
-        p: float = 1.0,
-        p_batch: float = 1.0,
-        same_on_batch: bool = True,
-        keepdim: bool = True,
-    ):
-        if p != 1.0 or p_batch != 1.0 or not same_on_batch:
-            raise ValueError("Identity is always applied. No probabilities can be applied.")
-
-        super().__init__(p, p_batch, same_on_batch, keepdim)
-
-    def forward(self, *args: torch.Tensor, **kwargs: Any):
-        if len(args) == 1:
-            return args[0]
-
-        return args
-
-    def inverse(self, *args: torch.Tensor, **kwargs: Any):
-        if len(args) == 1:
-            return args[0]
-        return args
-
-
 class HEDColorAugmentation(K.IntensityAugmentationBase2D):
     """
     A torch implementation of the color stain augmentation algorithm on the
@@ -255,14 +226,14 @@ class AugmentationFactory(nn.Module):
         self,
         data_description: DataDescription,
         data_module: pl.LightningDataModule,
-        initial_transforms: list | None = None,
+        initial_transforms: list[nn.Module] | None = None,
         random_apply_intensity: int | bool | ListConfig = False,
         random_apply_weights_intensity: list[float] | None = None,
-        intensity_augmentations: list | None = None,
+        intensity_augmentations: list[K.IntensityAugmentationBase2D] | None = None,
         random_apply_geometric: int | bool | ListConfig = False,
         random_apply_weights_geometric: list[float] | ListConfig | None = None,
-        geometric_augmentations: list | None = None,
-        final_transforms: list | None = None,
+        geometric_augmentations: list[K.GeometricAugmentationBase2D] | None = None,
+        final_transforms: list[nn.Module] | None = None,
     ) -> None:
         super().__init__()
 
