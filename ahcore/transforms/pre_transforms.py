@@ -37,7 +37,7 @@ class PreTransformTaskFactory:
         # These are always finally added.
         transforms += [
             ImageToTensor(),
-            PathToString(),
+            AllowCollate(),
         ]
         self._transforms = Compose(transforms)
 
@@ -180,14 +180,20 @@ def one_hot_encoding(index_map: dict[str, int], mask: npt.NDArray[Any]) -> npt.N
     return new_mask
 
 
-class PathToString:
+class AllowCollate:
     """Path objects cannot be collated in the standard pytorch collate function.
-    This transform converts the path to a string.
+    This transform converts the path to a string. Same holds for the annotations and labels
     """
 
     def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
+
+        # This would prevent collate
+        if sample["annotations"] is None:
+            del sample["annotations"]
+        if sample["labels"] is None:
+            del sample["labels"]
 
         return sample
 
