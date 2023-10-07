@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 from pathlib import Path
 from types import TracebackType
-from typing import Callable, Generator, Literal, Optional, Type, TypedDict, cast
+from typing import Any, Callable, Generator, Literal, NoReturn, Optional, Type, TypedDict, cast, overload
 
 from dlup import SlideImage
 from dlup.annotations import WsiAnnotations
@@ -134,17 +134,17 @@ def _get_rois(mask: WsiAnnotations | None, data_description: DataDescription, st
 class DataManager:
     def __init__(self, database_uri: str) -> None:
         self._database_uri = database_uri
-        self.__session = None
+        self.__session: Optional[Session] = None
         self._logger = get_logger(type(self).__name__)
 
     @property
-    def _session(self):
+    def _session(self) -> Session:
         if self.__session is None:
             self.__session = open_db(self._database_uri)
         return self.__session
 
     @staticmethod
-    def _ensure_record(record: Type[Base], description: str) -> None:
+    def _ensure_record(record: Any, description: str) -> None:
         """Raises an error if the record is None."""
         if not record:
             raise RecordNotFoundError(f"{description} not found.")
@@ -161,6 +161,10 @@ class DataManager:
         split_definition = self._session.query(SplitDefinitions).filter_by(version=split_version).first()
         self._ensure_record(split_definition, f"Split definition with version {split_version}")
 
+        # This is because mypy is complaining otherwise,
+        # but _ensure_record effectively ensures that the record is not None
+        assert manifest is not None
+        assert split_definition is not None
         query = (
             self._session.query(Patient)
             .join(Split)
@@ -225,7 +229,7 @@ class DataManager:
         """
         patient = self._session.query(Patient).filter_by(patient_code=patient_code).first()
         self._ensure_record(patient, f"Patient with code {patient_code} not found")
-
+        assert patient is not None  # for mypy
         return [fetch_image_metadata(image) for image in patient.images]
 
     def get_image_by_filename(self, filename: str) -> Image:
@@ -263,6 +267,7 @@ class DataManager:
         """
         image = self._session.query(Image).filter_by(id=image_id).first()
         self._ensure_record(image, f"No image found with ID {image_id}")
+        assert image is not None  # mypy
         return fetch_image_metadata(image)
 
     def __enter__(self) -> "DataManager":

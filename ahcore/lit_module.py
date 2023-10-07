@@ -5,10 +5,11 @@ This module contains the core Lightning module for ahcore. This module is respon
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, MutableMapping, Optional, Type, TypedDict
 
 import pytorch_lightning as pl
 import torch.optim.optimizer
+from pytorch_lightning.core.mixins.hparams_mixin import HyperparametersMixin
 from pytorch_lightning.trainer.states import TrainerFn
 from torch import nn
 
@@ -16,8 +17,16 @@ from ahcore.exceptions import ConfigurationError
 from ahcore.metrics import MetricFactory, WSIMetricFactory
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
+from ahcore.utils.types import DlupDatasetSample
+
+LitModuleSample = dict[str, Any]
 
 logger = get_logger(__name__)
+
+
+class HyperParams:
+    optimizer: Optional[Type[torch.optim.optimizer.Optimizer]]
+    scheduler: Optional[Type[torch.optim.lr_scheduler.LRScheduler]]
 
 
 class AhCoreLightningModule(pl.LightningModule):
@@ -38,7 +47,7 @@ class AhCoreLightningModule(pl.LightningModule):
         loss: nn.Module | None = None,
         augmentations: dict[str, nn.Module] | None = None,
         metrics: dict[str, MetricFactory | WSIMetricFactory] | None = None,
-        scheduler: Any | None = None,  # noqa
+        scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,  # noqa
     ):
         super().__init__()
 
@@ -77,9 +86,9 @@ class AhCoreLightningModule(pl.LightningModule):
 
     @property
     def name(self) -> str:
-        return self._model.__class__.__name__
+        return str(self._model.__class__.__name__)
 
-    def forward(self, sample):
+    def forward(self, sample: torch.Tensor) -> Any:
         """This function is only used during inference"""
         self._model.eval()
         return self._model.forward(sample)
@@ -102,7 +111,7 @@ class AhCoreLightningModule(pl.LightningModule):
         metrics = {f"{_stage}/{k}": v for k, v in self._tile_metric(prediction, target, roi).items()}
         return metrics
 
-    def do_step(self, batch, batch_idx: int, stage: TrainerFn | str) -> dict[str, Any]:
+    def do_step(self, batch: DlupDatasetSample, batch_idx: int, stage: TrainerFn | str) -> LitModuleSample:
         if self._augmentations and stage in self._augmentations:
             batch = self._augmentations[stage](batch)
 
@@ -197,10 +206,10 @@ class AhCoreLightningModule(pl.LightningModule):
             raise ValueError("Filenames are not constant across the batch.")
         return output
 
-    def configure_optimizers(self):
-        optimizer = self.hparams.optimizer(params=self.parameters())
-        if self.hparams.scheduler is not None:
-            scheduler = self.hparams.scheduler(optimizer=optimizer)
+    def configure_optimizers(self) -> Any:
+        optimizer = self.hparams.optimizer(params=self.parameters())  # type: ignore
+        if self.hparams.scheduler is not None:  # type: ignore
+            scheduler = self.hparams.scheduler(optimizer=optimizer)  # type: ignore
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
