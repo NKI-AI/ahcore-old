@@ -188,10 +188,10 @@ class AllowCollate:
     def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
-
+        # Not required anymore
+        del sample["annotation_data"]
+        del sample["annotations"]
         # This would prevent collate
-        if sample["annotations"] is None:
-            del sample["annotations"]
         if sample["labels"] is None:
             del sample["labels"]
 
@@ -223,11 +223,6 @@ class ImageToTensor:
         if "roi" in sample["annotation_data"]:
             roi = sample["annotation_data"]["roi"]
             sample["roi"] = torch.from_numpy(roi[np.newaxis, ...]).float()
-
-        # Not required anymore
-        del sample["annotation_data"]
-        # This might be empty.
-        del sample["annotations"]
 
         return sample
 
