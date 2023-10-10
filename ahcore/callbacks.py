@@ -206,7 +206,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
         ]
 
         points, boxes, region, roi = convert_annotations(
-            annotations,
+            _annotations,
             self._region_size,
             index_map=self._data_description.index_map,
             roi_name="roi",

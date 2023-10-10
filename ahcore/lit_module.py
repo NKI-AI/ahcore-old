@@ -18,12 +18,10 @@ from ahcore.metrics import MetricFactory, WSIMetricFactory
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.types import DlupDatasetSample
+
 logger = get_logger(__name__)
 
-
-class HyperParams:
-    optimizer: Optional[Type[torch.optim.optimizer.Optimizer]]
-    scheduler: Optional[Type[torch.optim.lr_scheduler.LRScheduler]]
+LitModuleSample = dict[str, Any]  # TODO: This can be a TypedDict
 
 
 class AhCoreLightningModule(pl.LightningModule):
@@ -85,7 +83,7 @@ class AhCoreLightningModule(pl.LightningModule):
     def name(self) -> str:
         return str(self._model.__class__.__name__)
 
-    def forward(self, sample: DlupDatasetSample) -> DlupDatasetSample:
+    def forward(self, sample: torch.Tensor) -> Any:
         """This function is only used during inference"""
         self._model.eval()
         return self._model.forward(sample)
@@ -203,9 +201,9 @@ class AhCoreLightningModule(pl.LightningModule):
             raise ValueError("Filenames are not constant across the batch.")
         return output
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Any:
         optimizer = self.hparams.optimizer(params=self.parameters())  # type: ignore
-        if self.hparams.scheduler is not None: # type: ignore
+        if self.hparams.scheduler is not None:  # type: ignore
             scheduler = self.hparams.scheduler(optimizer=optimizer)  # type: ignore
             return {
                 "optimizer": optimizer,
