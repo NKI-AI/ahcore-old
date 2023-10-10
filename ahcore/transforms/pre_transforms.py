@@ -3,24 +3,26 @@ Module for the pre-transforms, which are the transforms that are applied before 
 dataset."""
 from __future__ import annotations
 
-from typing import Any, Callable
-from ahcore.utils.types import DlupDatasetSample
+from typing import Callable
+
 import numpy as np
 import numpy.typing as npt
 import torch
 from dlup.data.transforms import ContainsPolygonToLabel, ConvertAnnotationsToMask, RenameLabels
-from torchvision.transforms import Compose
 from torchvision.transforms import functional as F
 
 from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
+from ahcore.utils.types import DlupDatasetSample
+
+PreTransformCallable = Callable[[DlupDatasetSample], DlupDatasetSample]
 
 logger = get_logger(__name__)
 
 
 class PreTransformTaskFactory:
-    def __init__(self, transforms: list[Callable[[DlupDatasetSample], DlupDatasetSample]]):
+    def __init__(self, transforms: list[PreTransformCallable]):
         """
         Pre-transforms are transforms that are applied to the samples directly originating from the dataset.
         These transforms are typically the same for the specific tasks (e.g., segmentation,
@@ -39,7 +41,7 @@ class PreTransformTaskFactory:
             ImageToTensor(),
             AllowCollate(),
         ]
-        self._transforms = Compose(transforms)
+        self._transforms = transforms
 
     @classmethod
     def for_segmentation(
@@ -61,7 +63,7 @@ class PreTransformTaskFactory:
         PreTransformTaskFactory
             The `PreTransformTaskFactory` initialized for segmentation tasks.
         """
-        transforms: list[Callable] = []
+        transforms: list[PreTransformCallable] = []
         if not requires_target:
             return cls(transforms)
 
@@ -82,7 +84,7 @@ class PreTransformTaskFactory:
     def for_wsi_classification(
         cls, data_description: DataDescription, requires_target: bool = True
     ) -> PreTransformTaskFactory:
-        transforms: list[Callable] = []
+        transforms: list[PreTransformCallable] = []
         if not requires_target:
             return cls(transforms)
 
@@ -100,8 +102,10 @@ class PreTransformTaskFactory:
         convert_annotations = ContainsPolygonToLabel(roi_name=roi_name, label=label, threshold=threshold)
         return cls([convert_annotations])
 
-    def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
-        return self._transforms(data)
+    def __call__(self, data: DlupDatasetSample) -> DlupDatasetSample:
+        for transform in self._transforms:
+            data = transform(data)
+        return data
 
     def __repr__(self) -> str:
         return f"PreTransformTaskFactory(transforms={self._transforms})"
@@ -122,7 +126,7 @@ class LabelToClassIndex:
     def __init__(self, index_map: dict[str, int]):
         self._index_map = index_map
 
-    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, sample: DlupDatasetSample) -> DlupDatasetSample:
         sample["labels"] = {
             label_name: self._index_map[label_value] for label_name, label_value in sample["labels"].items()
         }
@@ -145,7 +149,7 @@ class OneHotEncodeMask:
         # Check the max value in the mask
         self._largest_index = max(index_map.values())
 
-    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, sample: DlupDatasetSample) -> DlupDatasetSample:
         mask = sample["annotation_data"]["mask"]
 
         new_mask = np.zeros((self._largest_index + 1, *mask.shape))
@@ -156,7 +160,7 @@ class OneHotEncodeMask:
         return sample
 
 
-def one_hot_encoding(index_map: dict[str, int], mask: npt.NDArray[Any]) -> npt.NDArray[Any]:
+def one_hot_encoding(index_map: dict[str, int], mask: npt.NDArray[np.int_ | np.float_]) -> npt.NDArray[np.float32]:
     """
     functional interface to convert labels/predictions into one-hot codes
 
@@ -185,13 +189,13 @@ class AllowCollate:
     This transform converts the path to a string. Same holds for the annotations and labels
     """
 
-    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, sample: DlupDatasetSample) -> DlupDatasetSample:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
-        # Not required anymore
-        del sample["annotation_data"]
-        del sample["annotations"]
+
         # This would prevent collate
+        if sample["annotations"] is None:
+            del sample["annotations"]
         if sample["labels"] is None:
             del sample["labels"]
 
@@ -203,7 +207,7 @@ class ImageToTensor:
     Transform to translate the output of a dlup dataset to data_description supported by AhCore
     """
 
-    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, sample: DlupDatasetSample) -> dict[str, DlupDatasetSample]:
         sample["image"] = F.pil_to_tensor(sample["image"].convert("RGB")).float()
 
         if sample["image"].sum() == 0:
@@ -223,6 +227,11 @@ class ImageToTensor:
         if "roi" in sample["annotation_data"]:
             roi = sample["annotation_data"]["roi"]
             sample["roi"] = torch.from_numpy(roi[np.newaxis, ...]).float()
+
+        # Not required anymore
+        del sample["annotation_data"]
+        # This might be empty.
+        del sample["annotations"]
 
         return sample
 
