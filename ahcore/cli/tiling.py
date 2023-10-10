@@ -185,12 +185,12 @@ def _generator(
     dataset: TiledWsiDataset, quality: int | None = 80, compression: str = "JPEG"
 ) -> Generator[Any, Any, Any]:
     for idx in range(len(dataset)):
-        # TODO: To use:
-        # for idx, sample in enumerate(dataset):
-        # The following needs to be added to TiledWsiDataset:
-        # def __iter__(self) -> Iterator[RegionFromWsiDatasetSample]:
-        #     for i in range(len(self)):
-        #         yield self[i]
+    # TODO: To use:
+    # for idx, sample in enumerate(dataset):
+    # The following needs to be added to TiledWsiDataset:
+    # def __iter__(self) -> Iterator[RegionFromWsiDatasetSample]:
+    #     for i in range(len(self)):
+    #         yield self[i]
         sample = dataset[idx]
         buffered = io.BytesIO()
         if quality is not None:

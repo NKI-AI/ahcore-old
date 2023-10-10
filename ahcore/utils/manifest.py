@@ -11,8 +11,9 @@ from types import TracebackType
 from typing import Any, Callable, Generator, Literal, Optional, Type, TypedDict, cast
 
 from dlup import SlideImage
+from dlup.data.dataset import TileSample, RegionFromWsiDatasetSample
 from dlup.annotations import WsiAnnotations
-from dlup.data.dataset import RegionFromWsiDatasetSample, TiledWsiDataset, TileSample
+from dlup.data.dataset import TiledWsiDataset
 from dlup.experimental_backends import ImageBackend  # type: ignore
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel

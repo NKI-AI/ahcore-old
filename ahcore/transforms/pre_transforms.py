@@ -3,7 +3,7 @@ Module for the pre-transforms, which are the transforms that are applied before 
 dataset."""
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -15,8 +15,9 @@ from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.types import DlupDatasetSample
+from dlup.data.dataset import TileSample, TileSampleWithAnnotationData
 
-PreTransformCallable = Callable[[DlupDatasetSample], DlupDatasetSample]
+PreTransformCallable = Callable[[TileSample], TileSampleWithAnnotationData]
 
 logger = get_logger(__name__)
 
@@ -189,7 +190,7 @@ class AllowCollate:
     This transform converts the path to a string. Same holds for the annotations and labels
     """
 
-    def __call__(self, sample: DlupDatasetSample) -> DlupDatasetSample:
+    def __call__(self, sample: TileSample) -> dict[str, Any]:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
 
