@@ -3,11 +3,12 @@ Module for the pre-transforms, which are the transforms that are applied before 
 dataset."""
 from __future__ import annotations
 
-from typing import Callable, Any
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
 import torch
+from dlup.data.dataset import TileSample, TileSampleWithAnnotationData
 from dlup.data.transforms import ContainsPolygonToLabel, ConvertAnnotationsToMask, RenameLabels
 from torchvision.transforms import functional as F
 
@@ -15,7 +16,6 @@ from ahcore.exceptions import ConfigurationError
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.types import DlupDatasetSample
-from dlup.data.dataset import TileSample, TileSampleWithAnnotationData
 
 PreTransformCallable = Callable[[TileSample], TileSampleWithAnnotationData]
 
@@ -194,10 +194,15 @@ class AllowCollate:
         # Path objects cannot be collated
         sample["path"] = str(sample["path"])
 
-        # This would prevent collate
-        if sample["annotations"] is None:
+        # Not required anymore
+        if "annotation_data" in sample:
+            del sample["annotation_data"]
+
+        # Not required anymore
+        if "annotations" in sample:
             del sample["annotations"]
-        if sample["labels"] is None:
+
+        if sample.get("labels") is None:
             del sample["labels"]
 
         return sample
@@ -228,11 +233,6 @@ class ImageToTensor:
         if "roi" in sample["annotation_data"]:
             roi = sample["annotation_data"]["roi"]
             sample["roi"] = torch.from_numpy(roi[np.newaxis, ...]).float()
-
-        # Not required anymore
-        del sample["annotation_data"]
-        # This might be empty.
-        del sample["annotations"]
 
         return sample
 
