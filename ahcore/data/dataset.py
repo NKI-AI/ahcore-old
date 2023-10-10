@@ -4,12 +4,12 @@ Utilities to construct datasets and DataModule's from manifests.
 from __future__ import annotations
 
 import uuid as uuid_module
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Generator, Iterator, Optional
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from dlup.data.dataset import ConcatDataset
+from dlup.data.dataset import ConcatDataset, TiledWsiDataset
 from pytorch_lightning.trainer.states import TrainerFn
 from torch.utils.data import DataLoader, Sampler
 
@@ -119,7 +119,7 @@ class DlupDataModule(pl.LightningDataModule):
 
         self._logger.info("Constructing dataset iterator for stage %s", stage)
 
-        def dataset_iterator() -> Iterator[_DlupDataset]:
+        def dataset_iterator() -> Generator[TiledWsiDataset, None, None]:
             gen = datasets_from_data_description(
                 db_manager=self._data_manager,
                 data_description=self.data_description,

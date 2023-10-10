@@ -18,7 +18,7 @@ import numpy as np
 import numpy.typing as npt
 import PIL.Image
 from dlup import SlideImage
-from dlup.data.dataset import TiledROIsSlideImageDataset
+from dlup.data.dataset import TiledWsiDataset
 from dlup.tiling import GridOrder, TilingMode
 from PIL import Image
 from pydantic import BaseModel
@@ -30,7 +30,7 @@ from ahcore.writers import H5FileImageWriter
 logger = getLogger(__name__)
 
 
-def read_mask(path: Path) -> npt.NDArray[np.uint8]:
+def read_mask(path: Path) -> npt.NDArray[np.int_]:
     return iio.imread(path)[..., 0]
 
 
@@ -45,7 +45,7 @@ class SlideImageMetaData(BaseModel):
     vendor: str | None
 
     @classmethod
-    def from_dataset(cls, dataset: TiledROIsSlideImageDataset) -> "SlideImageMetaData":
+    def from_dataset(cls, dataset: TiledWsiDataset) -> "SlideImageMetaData":
         _relevant_keys = ["aspect_ratio", "magnification", "mpp", "size", "vendor"]
         return cls(
             **{
@@ -85,7 +85,7 @@ class DatasetConfigs(BaseModel):
 def _save_thumbnail(
     image_fn: Path,
     dataset_cfg: DatasetConfigs,
-    mask: npt.NDArray[np.uint8] | None,
+    mask: npt.NDArray[np.int_] | None,
 ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8] | None, npt.NDArray[np.uint8]]:
     target_mpp = max(dataset_cfg.mpp * 30, 30)
     tile_size = (
@@ -93,7 +93,7 @@ def _save_thumbnail(
         min(30, dataset_cfg.tile_size[1] // 30),
     )
 
-    dataset = TiledROIsSlideImageDataset.from_standard_tiling(
+    dataset = TiledWsiDataset.from_standard_tiling(
         image_fn,
         target_mpp,
         tile_size,
@@ -113,7 +113,12 @@ def _save_thumbnail(
         mask_arr = None
 
     thumbnail_io = io.BytesIO()
-    thumbnail = dataset.slide_image.get_thumbnail(tuple(scaled_region_view.size))
+
+    # TODO: This needs to change in dlup, the scaled_region_view needs to return size in int, int.
+    _tile_size = tuple(scaled_region_view.size)
+    tile_size = (_tile_size[0], _tile_size[1])
+
+    thumbnail = dataset.slide_image.get_thumbnail(tile_size)
     thumbnail.convert("RGB").save(thumbnail_io, quality=75)
     thumbnail_arr = np.frombuffer(thumbnail_io.getvalue(), dtype="uint8")
 
@@ -137,10 +142,10 @@ def _save_thumbnail(
 
 def create_slide_image_dataset(
     slide_image_path: Path,
-    mask: SlideImage | npt.NDArray[np.uint8 | np.bool_] | None,
+    mask: SlideImage | npt.NDArray[np.int_] | None,
     cfg: DatasetConfigs,
     overwrite_mpp: tuple[float, float] | None = None,
-) -> TiledROIsSlideImageDataset:
+) -> TiledWsiDataset:
     """
     Initializes and returns a slide image dataset.
 
@@ -162,7 +167,7 @@ def create_slide_image_dataset(
 
     """
 
-    return TiledROIsSlideImageDataset.from_standard_tiling(
+    return TiledWsiDataset.from_standard_tiling(
         path=slide_image_path,
         mpp=cfg.mpp,
         tile_size=cfg.tile_size,
@@ -177,15 +182,22 @@ def create_slide_image_dataset(
 
 
 def _generator(
-    dataset: TiledROIsSlideImageDataset, quality: int | None = 80, compression: str = "JPEG"
+    dataset: TiledWsiDataset, quality: int | None = 80, compression: str = "JPEG"
 ) -> Generator[Any, Any, Any]:
-    for idx, sample in enumerate(dataset):
+    for idx in range(len(dataset)):
+    # TODO: To use:
+    # for idx, sample in enumerate(dataset):
+    # The following needs to be added to TiledWsiDataset:
+    # def __iter__(self) -> Iterator[RegionFromWsiDatasetSample]:
+    #     for i in range(len(self)):
+    #         yield self[i]
+        sample = dataset[idx]
         buffered = io.BytesIO()
         if quality is not None:
             # If we just cast the PIL.Image to RGB, the alpha channel is set to black
             # which is a bit unnatural if you look in the image pyramid where it would be white in lower resolutions
             # this is why we take the following approach.
-            tile = sample["image"]
+            tile: PIL.Image.Image = sample["image"]
             background = PIL.Image.new("RGB", tile.size, (255, 255, 255))  # Create a white background
             background.paste(tile, mask=tile.split()[3])  # Paste the image using the alpha channel as mask
             background.convert("RGB").save(buffered, format=compression, quality=quality)
@@ -199,7 +211,7 @@ def _generator(
 
 
 def save_tiles(
-    dataset: TiledROIsSlideImageDataset,
+    dataset: TiledWsiDataset,
     h5_writer: H5FileImageWriter,
     quality: int | None = 80,
 ) -> None:
@@ -252,11 +264,11 @@ def _tiling_pipeline(
         )
         save_tiles(dataset, h5_writer, quality)
         if save_thumbnail:
-            thumbnail, mask, overlay = _save_thumbnail(image_path, dataset_cfg, mask)
+            thumbnail, thumbnail_mask, overlay = _save_thumbnail(image_path, dataset_cfg, mask)
 
-            if mask is not None:
+            if thumbnail_mask is not None:
                 h5_writer.add_associated_images(
-                    images=(("thumbnail", thumbnail), ("mask", mask), ("overlay", overlay)),
+                    images=(("thumbnail", thumbnail), ("mask", thumbnail_mask), ("overlay", overlay)),
                     description="thumbnail, mask and overlay",
                 )
             else:

@@ -119,7 +119,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
         """
         regions = []
         for coordinates in self._grid:
-            if self._mask is None or self._is_masked(coordinates):
+            if self._mask is None or self._is_masked((coordinates[0], coordinates[1])):
                 regions.append(coordinates)
         return regions
 
@@ -481,7 +481,7 @@ def _write_tiff(
     tile_process_function: Callable[[GenericArray], GenericArray],
     generator_from_reader: Callable[
         [H5FileImageReader, tuple[int, int], Callable[[GenericArray], GenericArray]],
-        Generator[GenericArray, None, None],
+        Iterator[npt.NDArray[np.int_]],
     ],
 ) -> None:
     logger.debug("Writing TIFF %s", filename.with_suffix(".tiff"))
