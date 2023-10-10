@@ -199,7 +199,7 @@ class AhCoreLightningModule(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params=self.parameters())  # type: ignore
-        if self.hparams.scheduler is not None:
+        if self.hparams.scheduler is not None: # type: ignore
             scheduler = self.hparams.scheduler(optimizer=optimizer)  # type: ignore
             return {
                 "optimizer": optimizer,
