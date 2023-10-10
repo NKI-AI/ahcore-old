@@ -8,12 +8,12 @@ from __future__ import annotations
 import functools
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable, Generator, Literal, NoReturn, Optional, Type, TypedDict, cast, overload
+from typing import Any, Callable, Generator, Literal, Optional, Type, TypedDict, cast
 
 from dlup import SlideImage
 from dlup.annotations import WsiAnnotations
-from dlup.data.dataset import Dataset, TiledROIsSlideImageDataset
-from dlup.experimental_backends import ImageBackend
+from dlup.data.dataset import RegionFromWsiDatasetSample, TiledWsiDataset, TileSample
+from dlup.experimental_backends import ImageBackend  # type: ignore
 from dlup.tiling import GridOrder, TilingMode
 from pydantic import BaseModel
 from sqlalchemy import create_engine
@@ -292,9 +292,9 @@ class DataManager:
 def datasets_from_data_description(
     db_manager: DataManager,
     data_description: DataDescription,
-    transform: Callable[[DlupDatasetSample], DlupDatasetSample],
+    transform: Callable[[TileSample], RegionFromWsiDatasetSample] | None,
     stage: str,
-) -> Generator[Dataset[DlupDatasetSample], None, None]:
+) -> Generator[TiledWsiDataset, None, None]:
     logger.info(f"Reading manifest from {data_description.manifest_database_uri} for stage {stage}")
 
     image_root = data_description.data_dir
@@ -321,7 +321,7 @@ def datasets_from_data_description(
             rois = _get_rois(mask, data_description, stage)
             mask_threshold = 0.0 if stage != "fit" else data_description.mask_threshold
 
-            dataset = TiledROIsSlideImageDataset.from_standard_tiling(
+            dataset = TiledWsiDataset.from_standard_tiling(
                 path=image_root / image.filename,
                 mpp=grid_description.mpp,
                 tile_size=grid_description.tile_size,
@@ -332,7 +332,7 @@ def datasets_from_data_description(
                 mask=mask,
                 mask_threshold=mask_threshold,
                 output_tile_size=getattr(grid_description, "output_tile_size", None),
-                rois=tuple(rois) if rois is not None else None,
+                rois=rois if rois is not None else None,
                 annotations=annotations if stage != "predict" else None,
                 labels=labels,  # type: ignore
                 transform=transform,
