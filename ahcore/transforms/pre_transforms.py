@@ -4,7 +4,7 @@ dataset."""
 from __future__ import annotations
 
 from typing import Any, Callable
-
+from ahcore.utils.types import DlupDatasetSample
 import numpy as np
 import numpy.typing as npt
 import torch
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 
 class PreTransformTaskFactory:
-    def __init__(self, transforms: list[Callable]):
+    def __init__(self, transforms: list[Callable[[DlupDatasetSample], DlupDatasetSample]]):
         """
         Pre-transforms are transforms that are applied to the samples directly originating from the dataset.
         These transforms are typically the same for the specific tasks (e.g., segmentation,

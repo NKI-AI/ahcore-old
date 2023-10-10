@@ -5,7 +5,7 @@ This module contains the core Lightning module for ahcore. This module is respon
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import pytorch_lightning as pl
 import torch.optim.optimizer
@@ -16,7 +16,7 @@ from ahcore.exceptions import ConfigurationError
 from ahcore.metrics import MetricFactory, WSIMetricFactory
 from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
-
+from ahcore.utils.types import DlupDatasetSample
 logger = get_logger(__name__)
 
 
@@ -77,9 +77,9 @@ class AhCoreLightningModule(pl.LightningModule):
 
     @property
     def name(self) -> str:
-        return self._model.__class__.__name__
+        return str(self._model.__class__.__name__)
 
-    def forward(self, sample):
+    def forward(self, sample: DlupDatasetSample) -> DlupDatasetSample:
         """This function is only used during inference"""
         self._model.eval()
         return self._model.forward(sample)
@@ -198,9 +198,9 @@ class AhCoreLightningModule(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        optimizer = self.hparams.optimizer(params=self.parameters())
+        optimizer = self.hparams.optimizer(params=self.parameters())  # type: ignore
         if self.hparams.scheduler is not None:
-            scheduler = self.hparams.scheduler(optimizer=optimizer)
+            scheduler = self.hparams.scheduler(optimizer=optimizer)  # type: ignore
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
