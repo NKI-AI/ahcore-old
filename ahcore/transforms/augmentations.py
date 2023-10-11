@@ -4,7 +4,7 @@ Augmentations factory
 """
 from __future__ import annotations
 
-from typing import Any, Optional, cast
+from typing import Any, Optional, cast, Union
 
 import kornia.augmentation as K
 import pytorch_lightning as pl
@@ -185,8 +185,8 @@ class CenterCrop(nn.Module):
         *sample: torch.Tensor,
         data_keys: Optional[list[str | int | DataKey]] = None,
         **kwargs: Any,
-    ) -> list[torch.Tensor] | torch.Tensor:
-        output = [self._cropper(item) for item in sample]
+    ) -> Union[list[torch.Tensor], torch.Tensor]:
+        output = [cast(torch.Tensor, self._cropper(item)) for item in sample]
 
         if len(output) == 1:
             return output[0]
