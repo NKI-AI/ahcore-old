@@ -158,10 +158,12 @@ class HEDColorAugmentation(K.IntensityAugmentationBase2D):
 
         rgb_tensor = input.permute(0, 2, 3, 1)
         optical_density = -torch.log(rgb_tensor + epsilon)
-        hed_tensor = optical_density @ reference_matrix_inv
+        # Mypy doesn't understand this is a tensor.
+        hed_tensor = cast(torch.Tensor, optical_density @ reference_matrix_inv)
 
         augmented_hed_tensor = torch.where(hed_tensor > epsilon, alpha * hed_tensor + beta, hed_tensor)
-        augmented_rgb_tensor = torch.exp(-augmented_hed_tensor @ reference_matrix) - epsilon
+        # Same problem that mypy doesn't understand
+        augmented_rgb_tensor = cast(torch.Tensor, torch.exp(-augmented_hed_tensor @ reference_matrix) - epsilon)
         augmented_sample = augmented_rgb_tensor.permute(0, 3, 1, 2)
         return augmented_sample
 
