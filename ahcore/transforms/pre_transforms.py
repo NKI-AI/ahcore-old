@@ -17,7 +17,7 @@ from ahcore.utils.data import DataDescription
 from ahcore.utils.io import get_logger
 from ahcore.utils.types import DlupDatasetSample
 
-PreTransformCallable = Callable[[TileSample], TileSampleWithAnnotationData]
+PreTransformCallable = Callable[[Any], Any]
 
 logger = get_logger(__name__)
 
@@ -192,20 +192,18 @@ class AllowCollate:
 
     def __call__(self, sample: TileSample) -> dict[str, Any]:
         # Path objects cannot be collated
-        sample["path"] = str(sample["path"])
+        output = dict(sample.copy())
 
-        # Not required anymore
-        if "annotation_data" in sample:
-            del sample["annotation_data"]
+        for key in sample:
+            if key == "path":
+                output["path"] = str(sample["path"])
+            if key in ["annotation_data", "annotations"]:
+                continue
 
-        # Not required anymore
-        if "annotations" in sample:
-            del sample["annotations"]
+        if sample["labels"] is not None:
+            output["labels"] = sample["labels"]
 
-        if sample.get("labels") is None:
-            del sample["labels"]
-
-        return sample
+        return output
 
 
 class ImageToTensor:
