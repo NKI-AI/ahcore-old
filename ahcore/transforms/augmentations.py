@@ -4,7 +4,7 @@ Augmentations factory
 """
 from __future__ import annotations
 
-from typing import Any, Optional, cast, Union
+from typing import Any, Optional, Union, cast
 
 import kornia.augmentation as K
 import pytorch_lightning as pl
