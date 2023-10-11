@@ -492,7 +492,8 @@ def _write_tiff(
             mpp=h5_reader.mpp,
             tile_size=tile_size,
             pyramid=True,
-            compression=TiffCompression.ZSTD,
+            compression=TiffCompression.JPEG,
+            quality=100,
             interpolator=Resampling.NEAREST,
         )
         writer.from_tiles_iterator(generator_from_reader(h5_reader, tile_size, tile_process_function))
