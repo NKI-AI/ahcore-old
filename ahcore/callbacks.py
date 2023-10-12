@@ -160,7 +160,8 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
         if self._annotations is not None:
             target, roi = self._get_annotation_data(coordinates)
             if roi is not None:
-                sample["roi"] = roi
+                sample["roi"] = roi.astype(np.uint8)
+            # TODO: I cannot find why mypy fails here?
             sample["target"] = target
 
         return sample
@@ -188,7 +189,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
 
     def _get_annotation_data(
         self, coordinates: tuple[int, int]
-    ) -> tuple[npt.NDArray[np.uint8], npt.NDArray[np.uint8] | None]:
+    ) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.int_] | None]:
         if not self._annotations:
             raise ValueError("No annotations are provided.")
 
@@ -210,10 +211,10 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
             index_map=self._data_description.index_map,
             roi_name="roi",
         )
-        region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
+        encoded_region = one_hot_encoding(index_map=self._data_description.index_map, mask=region)
         if roi is not None:
-            return region, roi[np.newaxis, ...]
-        return region, None
+            return encoded_region, roi[np.newaxis, ...]
+        return encoded_region, None
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         for idx in range(len(self)):
@@ -378,7 +379,8 @@ class WriteH5Callback(Callback):
             tile_size = inference_grid.tile_size
             tile_overlap = inference_grid.tile_overlap
 
-            new_queue: Queue = Queue()
+            # TODO: We are really putting strange things in the Queue if we may believe mypy
+            new_queue: Queue[Any] = Queue()
             parent_conn, child_conn = Pipe()
             new_writer = H5FileImageWriter(
                 output_filename,
@@ -498,7 +500,7 @@ def _write_tiff(
         writer.from_tiles_iterator(generator_from_reader(h5_reader, tile_size, tile_process_function))
 
 
-def tile_process_function(x: npt.NDArray[np.float_]) -> GenericArray:
+def tile_process_function(x: GenericArray) -> GenericArray:
     return np.asarray(np.argmax(x, axis=0).astype(np.uint8))
 
 
