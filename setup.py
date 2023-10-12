@@ -46,7 +46,7 @@ setup(
     long_description_content_type="text/markdown",
     python_requires=">=3.10",
     classifiers=[
-        "Development Status :: 1 - Planning",
+        "Development Status :: 4 - Beta",
         "Natural Language :: English",
         "Programming Language :: Python :: 3",
     ],
