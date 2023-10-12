@@ -21,8 +21,8 @@ import torch
 from dlup import SlideImage
 from dlup._image import Resampling
 from dlup.annotations import WsiAnnotations
-from dlup.data.dataset import ConcatDataset, TiledROIsSlideImageDataset
-from dlup.data.transforms import RenameLabels, convert_annotations
+from dlup.data.dataset import ConcatDataset, TiledWsiDataset
+from dlup.data.transforms import convert_annotations, rename_labels
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
@@ -119,8 +119,9 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
         """
         regions = []
         for coordinates in self._grid:
-            if self._mask is None or self._is_masked((coordinates[0], coordinates[1])):
-                regions.append(coordinates)
+            _coordinates = (coordinates[0], coordinates[1])
+            if self._mask is None or self._is_masked(_coordinates):
+                regions.append(_coordinates)
         return regions
 
     def _is_masked(self, coordinates: tuple[int, int]) -> bool:
@@ -201,9 +202,7 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
             raise ValueError("Index map is not provided.")
 
         _annotations = self._annotations.read_region(coordinates, self._scaling, self._region_size)
-        _annotations = RenameLabels(remap_labels=self._data_description.remap_labels)({"annotations": _annotations})[
-            "annotations"
-        ]
+        _annotations = rename_labels(_annotations, remap_labels=self._data_description.remap_labels)
 
         points, boxes, region, roi = convert_annotations(
             _annotations,
@@ -361,7 +360,7 @@ class WriteH5Callback(Callback):
                     f"TrainerFn {trainer.state.fn} is not supported for {self.__class__.__name__}."
                 )
 
-            current_dataset: TiledROIsSlideImageDataset
+            current_dataset: TiledWsiDataset
             current_dataset, _ = total_dataset.index_to_dataset(self._dataset_index)  # type: ignore
             slide_image = current_dataset.slide_image
 
