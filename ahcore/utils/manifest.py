@@ -35,7 +35,7 @@ from ahcore.utils.database_models import (
 )
 from ahcore.utils.io import get_enum_key_from_value, get_logger
 from ahcore.utils.rois import compute_rois
-from ahcore.utils.types import DlupDatasetSample, PositiveFloat, PositiveInt, Rois
+from ahcore.utils.types import PositiveFloat, PositiveInt, Rois
 
 logger = get_logger(__name__)
 

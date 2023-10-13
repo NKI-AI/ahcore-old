@@ -11,6 +11,7 @@ import time
 from collections import namedtuple
 from multiprocessing import Pipe, Process, Queue, Semaphore
 from multiprocessing.connection import Connection
+from multiprocessing.pool import Pool
 from pathlib import Path
 from typing import Any, Callable, Generator, Iterator, Optional, TypedDict, cast
 
@@ -26,7 +27,6 @@ from dlup.data.transforms import convert_annotations, rename_labels
 from dlup.tiling import Grid, GridOrder, TilingMode
 from dlup.writers import TiffCompression, TifffileImageWriter
 from pytorch_lightning.callbacks import Callback
-from pytorch_lightning.trainer.states import TrainerFn
 from shapely.geometry import MultiPoint, Point
 from torch.utils.data import Dataset
 
@@ -161,12 +161,11 @@ class _ValidationDataset(Dataset[DlupDatasetSample]):
             target, roi = self._get_annotation_data(coordinates)
             if roi is not None:
                 sample["roi"] = roi.astype(np.uint8)
-            # TODO: I cannot find why mypy fails here?
             sample["target"] = target
 
         return sample
 
-    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | np.uint16 | np.bool_]:
+    def _get_h5_region(self, coordinates: tuple[int, int]) -> npt.NDArray[np.uint8 | np.uint16 | np.float32 | np.bool_]:
         x, y = coordinates
         width, height = self._region_size
 
@@ -322,6 +321,7 @@ class WriteH5Callback(Callback):
         outputs: Any,
         batch: Any,
         batch_idx: int,
+        stage: str,
         dataloader_idx: int = 0,
     ) -> None:
         filename = batch["path"][0]  # Filenames are constant across the batch.
@@ -352,14 +352,12 @@ class WriteH5Callback(Callback):
 
             self._semaphore.acquire()
 
-            if trainer.state.fn == TrainerFn.VALIDATING:
+            if stage == "validate":
                 total_dataset: ConcatDataset = trainer.datamodule.validate_dataset  # type: ignore
-            elif trainer.state.fn == TrainerFn.PREDICTING:
+            elif stage == "predict":
                 total_dataset: ConcatDataset = trainer.predict_dataloaders.dataset  # type: ignore
             else:
-                raise NotImplementedError(
-                    f"TrainerFn {trainer.state.fn} is not supported for {self.__class__.__name__}."
-                )
+                raise NotImplementedError(f"Stage {stage} is not supported for {self.__class__.__name__}.")
 
             current_dataset: TiledWsiDataset
             current_dataset, _ = total_dataset.index_to_dataset(self._dataset_index)  # type: ignore
@@ -426,7 +424,7 @@ class WriteH5Callback(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, "validate", dataloader_idx)
 
     def on_predict_batch_end(
         self,
@@ -437,7 +435,7 @@ class WriteH5Callback(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
+        self._batch_end(trainer, pl_module, outputs, batch, batch_idx, "predict", dataloader_idx)
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         self._epoch_end(trainer, pl_module)
@@ -663,7 +661,7 @@ def compute_metrics_for_case(
     task_data: TaskData,
     class_names: dict[int, str],
     data_description: DataDescription,
-    wsi_metrics,
+    wsi_metrics: WSIMetricFactory,
     save_per_image: bool,
 ) -> list[dict[str, Any]]:
     # Extract the data from the namedtuple
@@ -717,11 +715,11 @@ def compute_metrics_for_case(
 # Adjusted stand-alone function.
 def schedule_task(
     task_data: TaskData,
-    pool,
-    results_dict: dict[list[dict[str, Any]], str],
-    class_names,
+    pool: Pool,
+    results_dict: dict[Any, str],  # Any because it will be a multiprocessing.pool.AsyncResult
+    class_names: dict[int, str],
     data_description: DataDescription,
-    wsi_metrics,
+    wsi_metrics: WSIMetricFactory,
     save_per_image: bool,
 ) -> None:
     result = pool.apply_async(
@@ -856,7 +854,7 @@ class ComputeWsiMetricsCallback(Callback):
         metrics = []
 
         with multiprocessing.Pool(processes=self._max_processes) as pool:
-            results_to_filename: dict = {}
+            results_to_filename: dict[list[dict[str, Any]], str] = {}
             completed_tasks = 0
 
             # Fill up the initial task pool

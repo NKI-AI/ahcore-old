@@ -130,8 +130,13 @@ class MetricFactory:
 class WSIMetric(abc.ABC):
     def __init__(self, data_description: DataDescription) -> None:
         """Initialize the WSI metric class"""
+        self.wsis: dict[str, Any] = {}
         self._data_description = data_description
-        self.name: str | None = None
+
+    @property
+    @abc.abstractmethod
+    def name(self) -> str:
+        pass
 
     @abc.abstractmethod
     # TODO: Fix Any
@@ -157,7 +162,6 @@ class WSIDiceMetric(WSIMetric):
 
     def __init__(self, data_description: DataDescription, compute_overall_dice: bool = False) -> None:
         super().__init__(data_description=data_description)
-        self.wsis: dict[str, Any] = {}
         self.compute_overall_dice = compute_overall_dice
         self._num_classes = self._data_description.num_classes
         # self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -174,7 +178,9 @@ class WSIDiceMetric(WSIMetric):
         _label_to_class[0] = "background"
         self._label_to_class = _label_to_class
 
-        self.name = "wsi_dice"
+    @property
+    def name(self) -> str:
+        return "wsi_dice"
 
     def process_batch(
         self,

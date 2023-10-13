@@ -8,7 +8,7 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 import torch
-from dlup.data.dataset import TileSample, TileSampleWithAnnotationData
+from dlup.data.dataset import TileSample
 from dlup.data.transforms import ContainsPolygonToLabel, ConvertAnnotationsToMask, RenameLabels
 from torchvision.transforms import functional as F
 
@@ -193,15 +193,14 @@ class AllowCollate:
     def __call__(self, sample: TileSample) -> dict[str, Any]:
         # Path objects cannot be collated
         output = dict(sample.copy())
-
         for key in sample:
             if key == "path":
                 output["path"] = str(sample["path"])
             if key in ["annotation_data", "annotations"]:
-                continue
-
-        if sample["labels"] is not None:
-            output["labels"] = sample["labels"]
+                # remove annotation_data and annotations keys from output
+                del output[key]
+            if key == "labels" and sample["labels"] is None:
+                del output[key]
 
         return output
 

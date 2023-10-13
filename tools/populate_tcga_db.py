@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 from dlup import SlideImage
-from dlup.experimental_backends import ImageBackend
+from dlup.experimental_backends import ImageBackend  # type: ignore
 
 from ahcore.utils.database_models import (
     CategoryEnum,
@@ -61,7 +61,7 @@ def populate_from_annotated_tcga(
                 split_category = CategoryEnum.PREDICT
             else:
                 split_category = random.choices(
-                    [CategoryEnum.TRAIN, CategoryEnum.VALIDATE, CategoryEnum.TEST], [70, 20, 10]
+                    [CategoryEnum.TRAIN, CategoryEnum.VALIDATE, CategoryEnum.TEST], [67, 33, 0]
                 )[0]
 
             split = Split(

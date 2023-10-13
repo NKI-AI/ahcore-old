@@ -5,11 +5,10 @@ This module contains the core Lightning module for ahcore. This module is respon
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 import pytorch_lightning as pl
 import torch.optim.optimizer
-from pytorch_lightning.core.mixins.hparams_mixin import HyperparametersMixin
 from pytorch_lightning.trainer.states import TrainerFn
 from torch import nn
 
